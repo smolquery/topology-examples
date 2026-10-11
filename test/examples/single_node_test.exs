@@ -44,20 +44,7 @@ defmodule Topology.Examples.SingleNodeTest do
   end
 
   test "the Postgres wire listener reads the same rows", %{dataset: dataset} do
-    {:ok, conn} =
-      Postgrex.start_link(
-        hostname: "localhost",
-        port: Example.host_port(@example, :pg),
-        username: "smolquery",
-        password: Example.api_key(),
-        database: "smolquery",
-        ssl: false
-      )
-
-    %Postgrex.Result{rows: [[count]]} =
-      Postgrex.query!(conn, "SELECT count(*) FROM #{dataset}.events", [])
-
-    assert count == @rows
+    assert wire_count(dataset) == {:ok, @rows}
   end
 
   test "the ClickHouse edge answers HyperDX's connection test" do
@@ -97,5 +84,34 @@ defmodule Topology.Examples.SingleNodeTest do
       2_000,
       "#{dataset}.events did not count #{@rows} rows after the restart"
     )
+
+    Eventually.until!(
+      fn -> wire_count(dataset) == {:ok, @rows} end,
+      30,
+      2_000,
+      "the Postgres wire listener did not answer #{@rows} rows after the restart"
+    )
+  end
+
+  defp wire_count(dataset) do
+    with {:ok, conn} <- Postgrex.start_link(wire_options()),
+         {:ok, %Postgrex.Result{rows: [[count]]}} <-
+           Postgrex.query(conn, "SELECT count(*) FROM #{dataset}.events", []) do
+      GenServer.stop(conn)
+      {:ok, count}
+    end
+  end
+
+  defp wire_options do
+    [
+      hostname: "localhost",
+      port: Example.host_port(@example, :pg),
+      username: "smolquery",
+      password: Example.api_key(),
+      database: "smolquery",
+      ssl: false,
+      backoff_type: :stop,
+      sync_connect: true
+    ]
   end
 end

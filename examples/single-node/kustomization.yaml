@@ -29,7 +29,7 @@ secretGenerator:
       - SMOLQUERY_WEB_PASSWORD=kind-only-web-password
       - SMOLQUERY_WEB_CHECK_ORIGIN=false
       - SMOLQUERY_SECRET_KEY_BASE=kind-only-secret-key-base-never-use-this-outside-a-local-kind-cluster
-      - SMOLQUERY_CREDENTIAL_KEY=a2luZC1vbmx5LWNyZWRlbnRpYWwta2V5LTMyLWJ5dGVzIQ==
+      - SMOLQUERY_CREDENTIAL_KEY=a2luZC1vbmx5LWNyZWRlbnRpYWwta2V5LTMyYnl0ZSE=
 
 generatorOptions:
   disableNameSuffixHash: true
