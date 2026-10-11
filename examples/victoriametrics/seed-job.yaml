@@ -1,0 +1,48 @@
+# Creates metrics.samples before vmagent's first write. The edge would
+# create it itself, but on a node whose catalog is SQLite that create can
+# meet a query job holding the catalog (upstream T-574), so the table is
+# made first, with the edge's own schema and clustering, and a 7-day
+# retention on ts. Re-applying is fine: an existing dataset or table answers
+# 409 and counts as done.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed-metrics-table
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: seed
+          image: curlimages/curl:8.22.0
+          env:
+            - name: SMOLQUERY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: smolquery-env
+                  key: SMOLQUERY_API_KEY
+          command:
+            - sh
+            - -ec
+            - |
+              api=http://smolquery:4000
+              auth="authorization: Bearer $SMOLQUERY_API_KEY"
+              json='content-type: application/json'
+              until curl -fsS -o /dev/null "$api/healthz"; do sleep 2; done
+
+              post() {
+                status=$(curl -sS -o /tmp/out -w '%{http_code}' -X "$1" -H "$auth" -H "$json" -d "$3" "$api$2")
+                echo "$1 $2 -> $status $(cat /tmp/out)"
+                case "$status" in 200|201|409) ;; *) exit 1 ;; esac
+              }
+
+              post POST /v1/datasets '{"id": "metrics"}'
+              post POST /v1/datasets/metrics/tables '{"id": "samples", "schema": [
+                {"name": "name", "type": "STRING", "nullable": false},
+                {"name": "series", "type": "INT64", "nullable": false},
+                {"name": "labels", "type": "MAP(STRING, STRING)"},
+                {"name": "ts", "type": "TIMESTAMP", "nullable": false},
+                {"name": "value", "type": "FLOAT64", "nullable": false}]}'
+              post PATCH /v1/datasets/metrics/tables/samples '{"clustering": ["name", "ts"]}'
+              post PATCH /v1/datasets/metrics/tables/samples '{"retention": {"column": "ts", "ttlMs": 604800000}}'

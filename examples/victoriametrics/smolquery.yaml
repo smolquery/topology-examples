@@ -1,0 +1,92 @@
+# The metrics store: one node, every role, the DuckLake catalog on
+# Postgres (SMOLQUERY_CATALOG sets the catalog alone; CATALOG_DATABASE_URL
+# would also turn on clustering, which one node does not need). The
+# VictoriaMetrics edge (8428) and the /metrics listener (4003) bind beyond
+# loopback so vmagent can write to one and scrape the other; the web UI is
+# open for a look at metrics.samples.
+apiVersion: v1
+kind: Service
+metadata:
+  name: smolquery
+spec:
+  selector:
+    app: smolquery
+  ports:
+    - { name: http, port: 4000 }
+    - { name: web, port: 4002 }
+    - { name: metrics, port: 4003 }
+    - { name: victoriametrics, port: 8428 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: smolquery
+spec:
+  serviceName: smolquery
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smolquery
+  template:
+    metadata:
+      labels:
+        app: smolquery
+    spec:
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+          command:
+            - sh
+            - -c
+            - until pg_isready -h postgres -U postgres; do sleep 1; done
+      containers:
+        - name: smolquery
+          image: smolquery
+          envFrom:
+            - secretRef:
+                name: smolquery-env
+          env:
+            - name: SMOLQUERY_ROLES
+              value: all
+            - name: SMOLQUERY_CATALOG
+              value: "postgres:host=postgres dbname=smolquery user=postgres password=postgres"
+            - name: SMOLQUERY_WEB_IP
+              value: 0.0.0.0
+            - name: SMOLQUERY_METRICS_IP
+              value: 0.0.0.0
+            - name: SMOLQUERY_VICTORIAMETRICS_IP
+              value: 0.0.0.0
+          ports:
+            - { name: http, containerPort: 4000 }
+            - { name: web, containerPort: 4002 }
+            - { name: metrics, containerPort: 4003 }
+            - { name: victoriametrics, containerPort: 8428 }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 4000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
