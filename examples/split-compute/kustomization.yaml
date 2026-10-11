@@ -1,0 +1,58 @@
+# split-compute: separate compute for every service.
+#
+# Upstream's deploy/base at the pinned release gives the disaggregated fleet:
+# an api StatefulSet, three buffer pods (the only PVCs), two stateless storage
+# sealers, the headless service and RBAC. This example takes the query and
+# web roles off the api pod, so it is the ingest front door and nothing else,
+# and adds a dedicated query tier: api, query, web and the Postgres wire
+# listener, with no write path. Postgres holds the DuckLake catalog and node
+# discovery; RustFS holds the sealed tier. That is the Supabase sandbox shape
+# (supabase/o11y-team-tools PR 119) without the AWS half.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: split-compute
+
+resources:
+  - https://github.com/chasers/smolquery//deploy/base?ref=v0.21.0
+  - ../../components/postgres
+  - ../../components/rustfs
+  - statefulset-query.yaml
+  - external-service.yaml
+  - probe.yaml
+
+images:
+  - name: smolquery
+    newName: ghcr.io/chasers/smolquery
+    newTag: v0.21.0
+
+patches:
+  - path: patch-ingest-roles.yaml
+  - path: patch-seal-age.yaml
+
+# kind-only literals, as upstream's kind overlay does it. Nothing here is
+# meant to be reachable from outside a laptop. The S3 block points the sealed
+# tier at the RustFS component.
+secretGenerator:
+  - name: smolquery-env
+    literals:
+      - CATALOG_DATABASE_URL=postgres://postgres:postgres@postgres/smolquery
+      - SMOLQUERY_API_KEY=kind-only-api-key
+      - SMOLQUERY_INTERNAL_SECRET=kind-only-internal-secret
+      - SMOLQUERY_WEB_IP=0.0.0.0
+      - SMOLQUERY_WEB_USERNAME=smolquery
+      - SMOLQUERY_WEB_PASSWORD=kind-only-web-password
+      - SMOLQUERY_WEB_CHECK_ORIGIN=false
+      - SMOLQUERY_SECRET_KEY_BASE=kind-only-secret-key-base-never-use-this-outside-a-local-kind-cluster
+      - RELEASE_COOKIE=kind-only-cookie
+      - SMOLQUERY_S3_BUCKET=smolquery-sealed
+      - SMOLQUERY_S3_ACCESS_KEY_ID=smolquery
+      - SMOLQUERY_S3_SECRET_ACCESS_KEY=smolquery-secret
+      - SMOLQUERY_S3_ENDPOINT=http://rustfs:9000
+      - SMOLQUERY_S3_URL_STYLE=path
+      - SMOLQUERY_S3_REGION=us-east-1
+      - GEN_RPC_TLS=false
+      - DIST_TLS=false
+
+generatorOptions:
+  disableNameSuffixHash: true

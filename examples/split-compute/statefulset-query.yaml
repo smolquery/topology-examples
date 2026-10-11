@@ -1,0 +1,112 @@
+# The query tier: api, query, web and the Postgres wire listener, on pods
+# with no write path. A node with api but without ingest answers an insert
+# with "the write path is not available here", so clients send writes to
+# smolquery-api and queries here. The web role lives here because its query
+# page runs jobs on the local node; the pg listener needs query on the same
+# node for the same reason.
+#
+# A StatefulSet, not a Deployment, because every cluster member needs a
+# stable pod name: the Erlang node name is pod DNS under the headless
+# service, which the `cluster: smolquery` label puts these pods behind.
+# Nothing durable lives here: /data is an emptyDir holding the shared
+# sealed-tier read cache and DuckDB scratch, and a pod can be replaced at
+# any time. Two replicas, so a scattered query has two workers and a query
+# keeps answering while one pod is replaced.
+apiVersion: v1
+kind: Service
+metadata:
+  name: smolquery-query
+spec:
+  selector:
+    app: smolquery-query
+  ports:
+    - { name: http, port: 4000 }
+    - { name: web, port: 4002 }
+    - { name: pg, port: 5432 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: smolquery-query
+spec:
+  serviceName: smolquery-headless
+  replicas: 2
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: smolquery-query
+  template:
+    metadata:
+      labels:
+        app: smolquery-query
+        cluster: smolquery
+    spec:
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      serviceAccountName: smolquery-api
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+          command:
+            - sh
+            - -c
+            - until pg_isready -h postgres -U postgres; do sleep 1; done
+      containers:
+        - name: smolquery
+          image: smolquery:latest
+          envFrom:
+            - secretRef:
+                name: smolquery-env
+          env:
+            - name: SMOLQUERY_ROLES
+              value: api,query,web,pg
+            - name: SMOLQUERY_PG_IP
+              value: 0.0.0.0
+            - name: SMOLQUERY_BUFFER_REPLICATION
+              value: "2"
+            # Must match the buffer StatefulSet's replicas: the planner fails
+            # a read when an expected buffer node cannot answer, rather than
+            # counting its unsealed rows as zero (T-94).
+            - name: SMOLQUERY_BUFFER_REPLICAS
+              value: "3"
+            - name: SMOLQUERY_QUERY_FILE_CACHE_DIR
+              value: /data/file-cache
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: HEADLESS_SERVICE
+              value: smolquery-headless
+          ports:
+            - { name: http, containerPort: 4000 }
+            - { name: web, containerPort: 4002 }
+            - { name: metrics, containerPort: 4003 }
+            - { name: pg, containerPort: 5432 }
+            - { name: epmd, containerPort: 4369 }
+            - { name: gen-rpc, containerPort: 5369 }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 4000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+      volumes:
+        - name: data
+          emptyDir: {}
