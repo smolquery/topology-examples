@@ -1,7 +1,7 @@
 # federated-read-clusters
 
 **Planned (T-643 spike, then T-644).** One writer cluster seals into a lake
-(Postgres metadata, MinIO); two independent read clusters, each with only
+(Postgres metadata, RustFS); two independent read clusters, each with only
 the `api,query,web` roles and a tiny catalog of its own, register the
 writer's lake as a `kind: ducklake` connection and serve queries against
 `writer.<dataset>.<table>`. Read capacity scales by adding clusters.

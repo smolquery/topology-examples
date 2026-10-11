@@ -1,0 +1,27 @@
+# Creates the sealed tier's bucket. A segment PUT does not create its bucket
+# and RustFS creates none at boot, so this runs once after RustFS answers.
+# curl signs the request itself (--aws-sigv4), so no S3 client image is
+# needed. A bucket that already exists answers 409 and counts as done, which
+# keeps a re-apply idempotent.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rustfs-bucket
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mb
+          image: curlimages/curl:8.22.0
+          command:
+            - sh
+            - -ec
+            - |
+              until curl -sS -o /dev/null http://rustfs:9000/; do sleep 2; done
+              status=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT \
+                --aws-sigv4 aws:amz:us-east-1:s3 --user smolquery:smolquery-secret \
+                http://rustfs:9000/smolquery-sealed)
+              echo "PUT /smolquery-sealed -> $status"
+              case "$status" in 200|409) exit 0 ;; *) exit 1 ;; esac

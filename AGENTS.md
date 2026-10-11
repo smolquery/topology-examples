@@ -20,7 +20,8 @@ the design is plan `PL-75` in the project tracker.
   (`https://github.com/chasers/smolquery//deploy/base?ref=...`), never
   copied into this repo. An example carries only what upstream does not
   ship (a dedicated query tier, a reader deployment, HyperDX, vmagent,
-  Grafana, an OLTP Postgres).
+  Grafana, an OLTP Postgres). The dependencies every fleet needs live in
+  `components/` (Postgres, and RustFS as the object store; never MinIO).
 - Every example deploys into a namespace named after it, exposes host ports
   from its own block in `kind/cluster.yaml`, and uses the API key
   `kind-only-api-key`. `Topology.Example` holds the same port table, and

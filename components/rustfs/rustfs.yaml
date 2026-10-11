@@ -1,0 +1,69 @@
+# RustFS, the S3-compatible object store the sealed tier writes to. One pod,
+# one drive, one volume: everything smolquery seals is under /data here.
+#
+# The container runs as UID 10001 (user `rustfs`), so the pod's fsGroup
+# makes the volume writable by it. The S3 API is on 9000; the console on
+# 9001 is left unexposed. The readiness probe is a TCP check: RustFS's
+# health routes are not relied on.
+apiVersion: v1
+kind: Service
+metadata:
+  name: rustfs
+spec:
+  selector:
+    app: rustfs
+  ports:
+    - name: s3
+      port: 9000
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rustfs
+spec:
+  serviceName: rustfs
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rustfs
+  template:
+    metadata:
+      labels:
+        app: rustfs
+    spec:
+      securityContext:
+        fsGroup: 10001
+      containers:
+        - name: rustfs
+          image: rustfs/rustfs:1.0.1
+          env:
+            - name: RUSTFS_VOLUMES
+              value: /data
+            - name: RUSTFS_ADDRESS
+              value: ":9000"
+            - name: RUSTFS_ACCESS_KEY
+              value: smolquery
+            - name: RUSTFS_SECRET_KEY
+              value: smolquery-secret
+          ports:
+            - containerPort: 9000
+              name: s3
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            tcpSocket:
+              port: 9000
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
