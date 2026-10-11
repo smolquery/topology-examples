@@ -1,0 +1,119 @@
+# federated-read-clusters: one writer, many readers, one lake.
+#
+# The writer is upstream's standard fleet (api, buffer, storage) sealing
+# into a lake whose metadata is Postgres and whose files are in RustFS. The
+# readers are two independent smolquery deployments with only the api,
+# query and web roles and a throwaway SQLite catalog of their own: each
+# registers the writer's lake as a `kind: ducklake` connection and serves
+# queries against writer.<dataset>.<table>. Read capacity scales by adding
+# readers, and nothing about the writer changes when one comes or goes.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: federated-read-clusters
+
+resources:
+  - https://github.com/chasers/smolquery//deploy/base?ref=v0.21.0
+  - ../../components/postgres
+  - ../../components/rustfs
+  - readers.yaml
+  - external-service.yaml
+
+images:
+  - name: smolquery
+    newName: ghcr.io/chasers/smolquery
+    newTag: v0.21.0
+
+patches:
+  # A CI runner holds a smaller fleet than upstream's kind overlay: two
+  # buffer replicas (replication 2 needs two) and one storage sealer. The
+  # api pod's expected buffer count must match, or every read fails
+  # waiting for a third buffer node that does not exist (T-94). The seal
+  # age is short so readers, who see only the sealed tier, see a write
+  # within seconds rather than the default minute.
+  - target:
+      kind: StatefulSet
+      name: smolquery-buffer
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  - target:
+      kind: StatefulSet
+      name: smolquery-storage
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - patch: |-
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: smolquery-buffer
+      spec:
+        template:
+          spec:
+            containers:
+              - name: smolquery
+                env:
+                  - name: SMOLQUERY_SEAL_MAX_AGE_MS
+                    value: "15000"
+  - patch: |-
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: smolquery-api
+      spec:
+        template:
+          spec:
+            containers:
+              - name: smolquery
+                env:
+                  - name: SMOLQUERY_BUFFER_REPLICAS
+                    value: "2"
+
+secretGenerator:
+  # The writer's fleet: upstream's kind-only literals, with the sealed tier
+  # on RustFS instead of MinIO.
+  - name: smolquery-env
+    literals:
+      - CATALOG_DATABASE_URL=postgres://postgres:postgres@postgres/smolquery
+      - SMOLQUERY_API_KEY=kind-only-api-key
+      - SMOLQUERY_INTERNAL_SECRET=kind-only-internal-secret
+      - SMOLQUERY_WEB_IP=0.0.0.0
+      - SMOLQUERY_WEB_USERNAME=smolquery
+      - SMOLQUERY_WEB_PASSWORD=kind-only-web-password
+      - SMOLQUERY_WEB_CHECK_ORIGIN=false
+      - SMOLQUERY_SECRET_KEY_BASE=kind-only-secret-key-base-never-use-this-outside-a-local-kind-cluster
+      - RELEASE_COOKIE=kind-only-cookie
+      - SMOLQUERY_S3_BUCKET=smolquery-sealed
+      - SMOLQUERY_S3_ACCESS_KEY_ID=smolquery
+      - SMOLQUERY_S3_SECRET_ACCESS_KEY=smolquery-secret
+      - SMOLQUERY_S3_ENDPOINT=http://rustfs:9000
+      - SMOLQUERY_S3_URL_STYLE=path
+      - SMOLQUERY_S3_REGION=us-east-1
+      - GEN_RPC_TLS=false
+      - DIST_TLS=false
+  # A reader: no catalog database (it is not a member of the writer's
+  # cluster), the writer's bucket so its job engines can read the lake's
+  # files, the credential key that seals the lake connection's password,
+  # and the root the lake's data path lies under (see README.md).
+  - name: reader-env
+    literals:
+      - SMOLQUERY_API_KEY=kind-only-api-key
+      - SMOLQUERY_WEB_IP=0.0.0.0
+      - SMOLQUERY_WEB_USERNAME=smolquery
+      - SMOLQUERY_WEB_PASSWORD=kind-only-web-password
+      - SMOLQUERY_WEB_CHECK_ORIGIN=false
+      - SMOLQUERY_SECRET_KEY_BASE=kind-only-secret-key-base-never-use-this-outside-a-local-kind-cluster
+      - SMOLQUERY_CREDENTIAL_KEY=a2luZC1vbmx5LWNyZWRlbnRpYWwta2V5LTMyLWJ5dGVzIQ==
+      - SMOLQUERY_S3_BUCKET=smolquery-sealed
+      - SMOLQUERY_S3_ACCESS_KEY_ID=smolquery
+      - SMOLQUERY_S3_SECRET_ACCESS_KEY=smolquery-secret
+      - SMOLQUERY_S3_ENDPOINT=http://rustfs:9000
+      - SMOLQUERY_S3_URL_STYLE=path
+      - SMOLQUERY_S3_REGION=us-east-1
+      - SMOLQUERY_FEDERATION_LOCAL_ROOTS=/data/ducklake
+
+generatorOptions:
+  disableNameSuffixHash: true
