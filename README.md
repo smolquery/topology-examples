@@ -18,7 +18,7 @@ are the ones worth knowing, side by side.
 | [`federated-read-clusters`](examples/federated-read-clusters) | One writer seals into a lake; independent read clusters attach it as a federated DuckLake connection. | spike first (T-643), then T-644 |
 | [`hyperdx`](examples/hyperdx) | HyperDX (ClickStack) reading logs through the ClickHouse edge. | planned (T-645) |
 | [`victoriametrics`](examples/victoriametrics) | smolquery as the metrics store behind vmagent and Grafana. | planned (T-646) |
-| [`postgres-fdw`](examples/postgres-fdw) | OLTP and OLAP joined from Postgres over `postgres_fdw`, and back the other way. | planned (T-647) |
+| [`postgres-fdw`](examples/postgres-fdw) | OLTP and OLAP joined from Postgres over `postgres_fdw`, and back the other way. | green in CI (T-647) |
 
 ## Run one
 

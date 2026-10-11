@@ -1,0 +1,44 @@
+# postgres-fdw: OLTP and OLAP joined from Postgres, and back the other way.
+#
+# One smolquery pod with every role and its Postgres wire listener open, and
+# an OLTP Postgres whose init script creates postgres_fdw, a foreign server
+# pointing at that listener, and a seeded users table. The suite imports a
+# smolquery dataset as foreign tables and joins it with users from the
+# Postgres side; then registers the OLTP database as a smolquery connection
+# and joins from the smolquery side.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: postgres-fdw
+
+resources:
+  - namespace.yaml
+  - smolquery.yaml
+  - oltp-postgres.yaml
+  - external-service.yaml
+
+images:
+  - name: smolquery
+    newName: ghcr.io/chasers/smolquery
+    newTag: v0.21.0
+
+configMapGenerator:
+  - name: oltp-init
+    files:
+      - oltp-init.sql
+
+# kind-only literals, as upstream's kind overlay does it. Nothing here is
+# meant to be reachable from outside a laptop.
+secretGenerator:
+  - name: smolquery-env
+    literals:
+      - SMOLQUERY_API_KEY=kind-only-api-key
+      - SMOLQUERY_WEB_USERNAME=smolquery
+      - SMOLQUERY_WEB_PASSWORD=kind-only-web-password
+      - SMOLQUERY_WEB_CHECK_ORIGIN=false
+      - SMOLQUERY_SECRET_KEY_BASE=kind-only-secret-key-base-never-use-this-outside-a-local-kind-cluster
+      # Seals the OLTP password before it reaches the catalog (32 bytes, base64).
+      - SMOLQUERY_CREDENTIAL_KEY=a2luZC1vbmx5LWNyZWRlbnRpYWwta2V5LTMyLWJ5dGVzIQ==
+
+generatorOptions:
+  disableNameSuffixHash: true
