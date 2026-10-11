@@ -63,8 +63,8 @@ spec:
           env:
             - name: SMOLQUERY_ROLES
               value: all
-            - name: SMOLQUERY_BUFFER_REPLICATION
-              value: "1"
+            # One buffer node: SMOLQUERY_BUFFER_REPLICATION stays unset
+            # (single copy); the release refuses any value below 2.
             - name: SMOLQUERY_BUFFER_REPLICAS
               value: "1"
             - name: SMOLQUERY_BUFFER_STATEFULSET
