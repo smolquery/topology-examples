@@ -94,7 +94,9 @@ spec:
           command:
             - sh
             - -c
-            - until curl -fsS -o /dev/null -H "authorization: Bearer $SMOLQUERY_API_KEY" http://smolquery:4000/v1/datasets/metrics/tables/samples; do sleep 2; done
+            - |
+              until curl -fsS -o /dev/null -H "authorization: Bearer $SMOLQUERY_API_KEY" \
+                http://smolquery:4000/v1/datasets/metrics/tables/samples; do sleep 2; done
       containers:
         - name: vmagent
           image: victoriametrics/vmagent:v1.153.0
