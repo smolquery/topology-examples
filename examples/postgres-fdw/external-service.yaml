@@ -1,0 +1,25 @@
+# NodePorts matched by kind/cluster.yaml's extraPortMappings: on the host,
+# smolquery's API is localhost:9600, its Postgres wire listener 9605, and
+# the OLTP Postgres 9606.
+apiVersion: v1
+kind: Service
+metadata:
+  name: smolquery-external
+spec:
+  type: NodePort
+  selector:
+    app: smolquery
+  ports:
+    - { name: http, port: 4000, targetPort: 4000, nodePort: 31600 }
+    - { name: pg, port: 5432, targetPort: 5432, nodePort: 31605 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oltp-postgres-external
+spec:
+  type: NodePort
+  selector:
+    app: oltp-postgres
+  ports:
+    - { name: pg, port: 5432, targetPort: 5432, nodePort: 31606 }

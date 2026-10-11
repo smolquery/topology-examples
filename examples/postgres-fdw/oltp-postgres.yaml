@@ -1,0 +1,71 @@
+# The OLTP side: a plain Postgres with a seeded users table. Its init script
+# (oltp-init.sql, mounted from a ConfigMap) runs once on the empty volume:
+# it creates postgres_fdw, the foreign server pointing at smolquery's wire
+# listener, and the user mapping, so a psql session can start at IMPORT
+# FOREIGN SCHEMA. CREATE SERVER opens no connection, so smolquery need not
+# be up yet when this boots.
+apiVersion: v1
+kind: Service
+metadata:
+  name: oltp-postgres
+spec:
+  selector:
+    app: oltp-postgres
+  ports:
+    - port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: oltp-postgres
+spec:
+  serviceName: oltp-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oltp-postgres
+  template:
+    metadata:
+      labels:
+        app: oltp-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+          env:
+            - name: POSTGRES_USER
+              value: app
+            - name: POSTGRES_PASSWORD
+              value: kind-only-oltp-password
+            - name: POSTGRES_DB
+              value: app
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "app", "-d", "app"]
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+      volumes:
+        - name: init
+          configMap:
+            name: oltp-init
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
