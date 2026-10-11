@@ -60,8 +60,8 @@ jobs:
       # creates the cluster from kind/cluster.yaml itself.
       - name: Install kind
         run: |
-          curl -fsSLo ./kind https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64
-          sudo install -m 0755 ./kind /usr/local/bin/kind
+          curl -fsSLo /tmp/kind https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64
+          sudo install -m 0755 /tmp/kind /usr/local/bin/kind
           kind version
 
       - run: ./scripts/kind-up.sh
