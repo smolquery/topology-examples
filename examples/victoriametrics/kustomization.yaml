@@ -3,7 +3,10 @@
 # vmagent scrapes every smolquery pod's /metrics and remote-writes the
 # samples to smolquery's own VictoriaMetrics edge; Grafana reads them back
 # through a provisioned Prometheus datasource pointed at that edge. One
-# smolquery pod with every role and a SQLite catalog, as in single-node.
+# smolquery pod with every role, with its DuckLake catalog on Postgres:
+# vmagent's writes, Grafana's checks and the suite's queries run jobs at
+# once, and on a SQLite catalog those lock each other out (upstream
+# docs/victoriametrics.md, T-574). Catalog only; no clustering.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -11,6 +14,7 @@ namespace: victoriametrics
 
 resources:
   - namespace.yaml
+  - ../../components/postgres
   - smolquery.yaml
   - seed-job.yaml
   - vmagent.yaml

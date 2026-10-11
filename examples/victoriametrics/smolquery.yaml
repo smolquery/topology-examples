@@ -1,4 +1,6 @@
-# The metrics store: one node, every role, a SQLite catalog. The
+# The metrics store: one node, every role, the DuckLake catalog on
+# Postgres (SMOLQUERY_CATALOG sets the catalog alone; CATALOG_DATABASE_URL
+# would also turn on clustering, which one node does not need). The
 # VictoriaMetrics edge (8428) and the /metrics listener (4003) bind beyond
 # loopback so vmagent can write to one and scrape the other; the web UI is
 # open for a look at metrics.samples.
@@ -32,6 +34,13 @@ spec:
     spec:
       enableServiceLinks: false
       terminationGracePeriodSeconds: 60
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+          command:
+            - sh
+            - -c
+            - until pg_isready -h postgres -U postgres; do sleep 1; done
       containers:
         - name: smolquery
           image: smolquery
@@ -41,6 +50,8 @@ spec:
           env:
             - name: SMOLQUERY_ROLES
               value: all
+            - name: SMOLQUERY_CATALOG
+              value: "postgres:host=postgres dbname=smolquery user=postgres password=postgres"
             - name: SMOLQUERY_WEB_IP
               value: 0.0.0.0
             - name: SMOLQUERY_METRICS_IP

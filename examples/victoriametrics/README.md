@@ -8,7 +8,7 @@ at the same edge. Nothing else runs: no VictoriaMetrics, no Prometheus.
 
 ```
   vmagent ──scrape /metrics (4003)──▶ smolquery-0 ◀──remote write (8428)── vmagent
-                                      │ all roles, SQLite catalog
+                                      │ all roles, catalog on Postgres
   Grafana ──MetricsQL (8428)─────────▶│ metrics.samples: name, series, labels, ts, value
   :9530                               └── /data
 ```
@@ -40,11 +40,16 @@ curl -sS -H 'authorization: Bearer kind-only-api-key' \
 
 - `smolquery.yaml`: one pod, every role, with the edge and the `/metrics`
   listener bound beyond loopback. The internal secret is fixed in the
-  kustomization because vmagent presents it when scraping.
+  kustomization because vmagent presents it when scraping. The DuckLake
+  catalog is on Postgres (`components/postgres`, through `SMOLQUERY_CATALOG`
+  so nothing else about the node changes): vmagent's writes, Grafana's
+  checks and a dashboard's panels run query jobs at once, and on a SQLite
+  catalog those lock each other out until the node restarts (upstream
+  `docs/victoriametrics.md`, T-574). The first run of this example hit
+  exactly that.
 - `seed-job.yaml`: creates `metrics.samples` with the edge's schema and
-  clustering, and a 7-day retention, before the first write. The edge would
-  create the table itself, but on a SQLite catalog that create can meet a
-  query job holding the file (upstream T-574).
+  clustering, and a 7-day retention, before the first write, so a dashboard
+  never finds the table missing.
 - `vmagent.yaml`: Kubernetes endpoint discovery over a ClusterRole, a 5 s
   scrape of every `metrics`-named port in the namespace plus vmagent
   itself, one remote-write URL with the API key as the bearer token.
