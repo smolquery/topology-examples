@@ -26,9 +26,18 @@ images:
     newName: ghcr.io/chasers/smolquery
     newTag: v0.21.0
 
+# Patches match before the namespace above is applied, and the base's
+# resources carry upstream's namespace, so each names its target by kind
+# and name rather than relying on the patch's own metadata.
 patches:
   - path: patch-ingest-roles.yaml
+    target:
+      kind: StatefulSet
+      name: smolquery-api
   - path: patch-seal-age.yaml
+    target:
+      kind: StatefulSet
+      name: smolquery-buffer
 
 # kind-only literals, as upstream's kind overlay does it. Nothing here is
 # meant to be reachable from outside a laptop. The S3 block points the sealed
