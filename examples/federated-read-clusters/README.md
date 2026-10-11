@@ -1,9 +1,93 @@
 # federated-read-clusters
 
-**Planned (T-643 spike, then T-644).** One writer cluster seals into a lake
-(Postgres metadata, RustFS); two independent read clusters, each with only
-the `api,query,web` roles and a tiny catalog of its own, register the
-writer's lake as a `kind: ducklake` connection and serve queries against
-`writer.<dataset>.<table>`. Read capacity scales by adding clusters.
+One writer, many readers, one lake. The writer is the standard smolquery
+fleet sealing into a DuckLake whose metadata is Postgres and whose files
+are in RustFS. Each reader is an independent smolquery with only the
+`api`, `query` and `web` roles, which registers the writer's lake as a
+federated DuckLake connection and serves queries against
+`writer.<dataset>.<table>`. Read capacity scales by adding readers;
+nothing about the writer changes when one comes or goes.
 
-Host ports: writer API 9300, reader-1 API 9301, reader-2 API 9302.
+```
+  inserts :9300 ─▶ ┌─ writer ──────────────────────────────┐
+                   │ smolquery-api · buffer×2 · storage×1  │
+                   │   seals ──▶ RustFS  (files)           │
+                   │   commits ─▶ Postgres (DuckLake meta)  │
+                   └──────────────┬──────────┬─────────────┘
+                                  │ ATTACH   │ read-only, through the
+                                  │          │ reader's own S3 secret
+  queries :9301 ─▶ ┌─ reader-1 ───┴──┐  ┌────┴─ reader-2 ─┐ ◀─ :9302
+                   │ api·query·web   │  │ api·query·web   │
+                   │ catalog: SQLite │  │ catalog: SQLite │
+                   └─────────────────┘  └─────────────────┘
+```
+
+## Status: waits on an upstream change (T-643, T-644)
+
+A reader registers the lake with the writer's own data path,
+`/data/ducklake`: the ducklake extension refuses an `ATTACH` whose
+`DATA_PATH` differs from the one the catalog stores, and smolquery's attach
+never overrides it. smolquery v0.21.0 accepts a local `data_path` only
+under a compile-time `local_roots` list, so `POST /v1/connections` answers
+`400 invalid parameter: data_path` from any release. The manifests already
+carry the variable the upstream task proposes
+(`SMOLQUERY_FEDERATION_LOCAL_ROOTS=/data/ducklake`), and the suite asserts
+the refusal today. When a release ships the variable, flip
+`@upstream_landed` in the test module and bump the pinned version: that is
+the whole change. The upstream task is T-650 in the smolquery project.
+
+## Run it
+
+```sh
+mise run kind-up
+mise run up federated-read-clusters
+mise run test federated-read-clusters
+```
+
+| what | where | credential |
+|---|---|---|
+| writer API | `http://localhost:9300` | `Bearer kind-only-api-key` |
+| reader-1 API | `http://localhost:9301` | `Bearer kind-only-api-key` |
+| reader-2 API | `http://localhost:9302` | `Bearer kind-only-api-key` |
+
+Registering the lake on a reader, by hand:
+
+```sh
+curl -H 'authorization: Bearer kind-only-api-key' -H 'content-type: application/json' \
+  -d '{"name": "writer", "kind": "ducklake", "host": "postgres", "port": 5432,
+       "database": "smolquery", "username": "postgres", "password": "postgres",
+       "sslmode": "disable", "data_path": "/data/ducklake"}' \
+  http://localhost:9301/v1/connections
+curl -X POST -H 'authorization: Bearer kind-only-api-key' http://localhost:9301/v1/connections/writer/test
+```
+
+## What the suite proves
+
+- Each reader registers the writer's lake and the connection test reads a
+  row through it (today: each reader answers the documented refusal).
+- Rows inserted at the writer are, once sealed, read from both readers as
+  `writer.<dataset>.<table>`.
+- A reader joins lake rows with rows of its own in one query.
+- Deleting a reader's pod changes nothing for the writer or the other
+  reader.
+
+## What a reader sees, and when
+
+A reader attaches the lake's catalog: it reads the files the catalog
+lists, which is the sealed tier only. The writer's hot tier, the rows
+acked but not yet sealed, is invisible to a reader until the next seal,
+so a reader's view lags the writer by the seal age (`SMOLQUERY_SEAL_MAX_AGE_MS`,
+15 s in this example, 60 s by default) on a quiet table and by less on a
+busy one. The writer's own queries have no such lag: they union the hot
+tier with the catalog snapshot. Put latency-sensitive reads on the writer
+and everything else on readers.
+
+## The trust boundary
+
+A registered lake's catalog decides which files a reader reads, and the
+reader reads them wherever the catalog says they are: nothing in the
+query engine's lockdown confines an attached lake. Register only a lake
+whose catalog you trust as you trust the reader itself. Here the readers
+are given the writer's Postgres credential outright; a real deployment
+gives them a read-only role on the metadata database and an S3 credential
+that can only read the bucket.

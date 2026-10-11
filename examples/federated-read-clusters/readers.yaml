@@ -1,0 +1,126 @@
+# Two readers, each its own smolquery: api, query and web only. No buffer
+# or storage role, no CATALOG_DATABASE_URL, so a reader is not a member of
+# the writer's cluster and holds nothing durable: its own DuckLake catalog
+# is SQLite on an emptyDir and stays empty but for the connection row that
+# names the writer's lake. A reader's query jobs read the lake's Parquet
+# files straight from RustFS; the writer never sees them.
+#
+# They are not labelled cluster=smolquery on purpose: that label is what
+# the writer's headless Service selects.
+apiVersion: v1
+kind: Service
+metadata:
+  name: reader-1
+spec:
+  selector:
+    app: reader-1
+  ports:
+    - { name: http, port: 4000 }
+    - { name: web, port: 4002 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: reader-1
+spec:
+  serviceName: reader-1
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reader-1
+  template:
+    metadata:
+      labels:
+        app: reader-1
+        role: reader
+    spec:
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: smolquery
+          image: smolquery
+          envFrom:
+            - secretRef:
+                name: reader-env
+          env:
+            - name: SMOLQUERY_ROLES
+              value: api,query,web
+          ports:
+            - { name: http, containerPort: 4000 }
+            - { name: web, containerPort: 4002 }
+            - { name: metrics, containerPort: 4003 }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reader-2
+spec:
+  selector:
+    app: reader-2
+  ports:
+    - { name: http, port: 4000 }
+    - { name: web, port: 4002 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: reader-2
+spec:
+  serviceName: reader-2
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reader-2
+  template:
+    metadata:
+      labels:
+        app: reader-2
+        role: reader
+    spec:
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: smolquery
+          image: smolquery
+          envFrom:
+            - secretRef:
+                name: reader-env
+          env:
+            - name: SMOLQUERY_ROLES
+              value: api,query,web
+          ports:
+            - { name: http, containerPort: 4000 }
+            - { name: web, containerPort: 4002 }
+            - { name: metrics, containerPort: 4003 }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+      volumes:
+        - name: data
+          emptyDir: {}
