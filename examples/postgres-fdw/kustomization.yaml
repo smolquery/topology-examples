@@ -37,8 +37,10 @@ secretGenerator:
       - SMOLQUERY_WEB_PASSWORD=kind-only-web-password
       - SMOLQUERY_WEB_CHECK_ORIGIN=false
       - SMOLQUERY_SECRET_KEY_BASE=kind-only-secret-key-base-never-use-this-outside-a-local-kind-cluster
-      # Seals the OLTP password before it reaches the catalog (32 bytes, base64).
-      - SMOLQUERY_CREDENTIAL_KEY=a2luZC1vbmx5LWNyZWRlbnRpYWwta2V5LTMyLWJ5dGVzIQ==
+      # Seals the OLTP password before it reaches the catalog. It must decode
+      # to exactly 32 bytes: a key of any other length counts as no key, and
+      # the connections routes answer 503.
+      - SMOLQUERY_CREDENTIAL_KEY=a2luZC1vbmx5LWNyZWRlbnRpYWwta2V5LTMyYnl0ZSE=
 
 generatorOptions:
   disableNameSuffixHash: true
