@@ -50,6 +50,7 @@ patches:
       kind: StatefulSet
       metadata:
         name: smolquery-buffer
+        namespace: smolquery
       spec:
         template:
           spec:
@@ -63,6 +64,7 @@ patches:
       kind: StatefulSet
       metadata:
         name: smolquery-api
+        namespace: smolquery
       spec:
         template:
           spec:
