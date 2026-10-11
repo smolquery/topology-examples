@@ -73,18 +73,27 @@ defmodule Topology.Examples.SplitComputeTest do
     test "seals to RustFS through the Postgres catalog and reads the rows back", context do
       %{query: query, dataset: dataset, first: first} = context
 
-      Eventually.until!(
-        fn -> sealed_files(query, dataset, first) >= 1 end,
-        40,
-        3_000,
-        "#{dataset}.#{first} never showed a sealed file in its query statistics"
-      )
+      unless Eventually.until(fn -> catalog_paths(dataset) != [] end, 60, 3_000) do
+        flunk("""
+        the Postgres catalog never listed a sealed file for #{dataset} within 180 s
+
+        statistics: #{inspect(statistics(query, dataset, first))}
+        bucket objects: #{inspect(sealed_keys(dataset))}
+        multipart uploads in flight: #{inspect(multipart_uploads())}
+        storage logs:
+        #{Kube.kubectl!(@namespace, ["logs", "-l", "app=smolquery-storage", "--tail=100", "--prefix"])}
+        """)
+      end
 
       assert sealed_keys(dataset) != [],
              "no object for #{dataset} is in the smolquery-sealed bucket"
 
-      assert catalog_paths(dataset) != [],
-             "the Postgres catalog lists no s3:// file for #{dataset}"
+      Eventually.until!(
+        fn -> sealed_files(query, dataset, first) >= 1 end,
+        20,
+        3_000,
+        "#{dataset}.#{first} never showed a sealed file in its query statistics"
+      )
 
       assert Api.count(query, "SELECT sum(id) AS n FROM #{dataset}.#{first}") ==
                {:ok, Enum.sum(1..@rows)}
@@ -174,36 +183,68 @@ defmodule Topology.Examples.SplitComputeTest do
     Api.count(api, "SELECT #{sums} AS n")
   end
 
-  defp sealed_files(api, dataset, table) do
+  defp statistics(api, dataset, table) do
     sql = "SELECT sum(id) AS n FROM #{dataset}.#{table}"
 
     case Api.post!(api, "/v1/queries", %{"query" => sql}) do
-      %{status: 200, body: %{"statistics" => %{"sealed" => %{"filesTotal" => files}}}} -> files
+      %{status: 200, body: %{"statistics" => statistics}} -> statistics
+      %{status: status, body: body} -> {status, body}
+    end
+  end
+
+  defp sealed_files(api, dataset, table) do
+    case statistics(api, dataset, table) do
+      %{"sealed" => %{"filesTotal" => files}} -> files
       _other -> 0
     end
   end
 
   defp sealed_keys(dataset) do
+    ~r/<Key>([^<]+)<\/Key>/
+    |> Regex.scan(s3_get("/smolquery-sealed?list-type=2&prefix=#{dataset}"))
+    |> Enum.map(fn [_tag, key] -> key end)
+  end
+
+  defp multipart_uploads do
+    ~r/<Key>([^<]+)<\/Key>/
+    |> Regex.scan(s3_get("/smolquery-sealed?uploads"))
+    |> Enum.map(fn [_tag, key] -> key end)
+  end
+
+  defp s3_get(path) do
     probe = @namespace |> Kube.pods("app=s3-probe") |> hd()
 
-    listing =
-      Kube.kubectl!(@namespace, [
-        "exec",
-        probe,
-        "--",
-        "curl",
-        "-sS",
-        "--aws-sigv4",
-        "aws:amz:us-east-1:s3",
-        "--user",
-        "smolquery:smolquery-secret",
-        "http://rustfs:9000/smolquery-sealed?list-type=2&prefix=#{dataset}"
-      ])
-
-    ~r/<Key>([^<]+)<\/Key>/ |> Regex.scan(listing) |> Enum.map(fn [_tag, key] -> key end)
+    Kube.kubectl!(@namespace, [
+      "exec",
+      probe,
+      "--",
+      "curl",
+      "-sS",
+      "--aws-sigv4",
+      "aws:amz:us-east-1:s3",
+      "--user",
+      "smolquery:smolquery-secret",
+      "http://rustfs:9000#{path}"
+    ])
   end
 
   defp catalog_paths(dataset) do
+    psql!("""
+    SELECT path FROM #{catalog_schema()}.ducklake_data_file
+    WHERE path LIKE 's3://smolquery-sealed/%#{dataset}%'
+    """)
+  end
+
+  defp catalog_schema do
+    "SELECT table_schema FROM information_schema.tables WHERE table_name = 'ducklake_data_file'"
+    |> psql!()
+    |> case do
+      [schema | _rest] -> ~s|"#{schema}"|
+      [] -> raise "the Postgres catalog holds no ducklake_data_file table"
+    end
+  end
+
+  defp psql!(sql) do
     @namespace
     |> Kube.kubectl!([
       "exec",
@@ -215,7 +256,7 @@ defmodule Topology.Examples.SplitComputeTest do
       "postgres",
       "smolquery",
       "-c",
-      "SELECT path FROM ducklake_data_file WHERE path LIKE 's3://smolquery-sealed/%#{dataset}%'"
+      sql
     ])
     |> String.split("\n", trim: true)
   end
