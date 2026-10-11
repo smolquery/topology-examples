@@ -19,7 +19,6 @@ resources:
   - ../../components/rustfs
   - statefulset-query.yaml
   - external-service.yaml
-  - probe.yaml
 
 images:
   - name: smolquery

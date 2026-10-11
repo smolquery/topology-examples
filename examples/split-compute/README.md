@@ -41,8 +41,7 @@ Upstream's `deploy/base` is referenced at the pinned release, not copied:
 this directory holds only what upstream does not ship. The query tier is
 `statefulset-query.yaml`; `patch-ingest-roles.yaml` takes `query` and `web`
 off the api pod; `patch-seal-age.yaml` makes a quiet table seal after 15 s
-so the suite does not wait a minute. `probe.yaml` is a curl pod the suite
-uses to list the bucket; it is not part of the topology.
+so the suite does not wait a minute.
 
 ## What the suite proves
 
@@ -53,9 +52,10 @@ uses to list the bucket; it is not part of the topology.
 - **A query fans out.** Two tables that the ring places on two different
   buffer nodes answer in one query, every row counted once.
 - **Sealing lands in RustFS through the Postgres catalog.** After the seal,
-  the job's statistics show a sealed file, the bucket lists an object under
-  the dataset's prefix, `ducklake_data_file` names an `s3://` path, and the
-  query reads the rows back from the object store.
+  `ducklake_data_file` names an `s3://` path, the bucket lists an object
+  under the dataset's prefix, the rows read back, and every row counts
+  exactly once while the sealed file and the hot tier's retiring
+  micro-segments overlap: two tiers, one query plan.
 - **The query tier is stateless.** A query pod is force-deleted and queries
   keep answering while the StatefulSet replaces it.
 - **A buffer owner dying never shortens an answer.** With the owner of a
