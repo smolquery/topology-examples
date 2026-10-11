@@ -16,7 +16,7 @@ are the ones worth knowing, side by side.
 | [`single-node`](examples/single-node) | Everything in one pod: every role, every edge, one volume. | green in CI (T-641) |
 | [`split-compute`](examples/split-compute) | Separate compute for ingest, buffer, query and storage; Postgres catalog; RustFS object store. The Supabase sandbox shape. | planned (T-642) |
 | [`federated-read-clusters`](examples/federated-read-clusters) | One writer seals into a lake; independent read clusters attach it as a federated DuckLake connection. | spike first (T-643), then T-644 |
-| [`hyperdx`](examples/hyperdx) | HyperDX (ClickStack) reading logs through the ClickHouse edge. | planned (T-645) |
+| [`hyperdx`](examples/hyperdx) | HyperDX (ClickStack) reading logs through the ClickHouse edge. | green in CI (T-645) |
 | [`victoriametrics`](examples/victoriametrics) | smolquery as the metrics store behind vmagent and Grafana. | planned (T-646) |
 | [`postgres-fdw`](examples/postgres-fdw) | OLTP and OLAP joined from Postgres over `postgres_fdw`, and back the other way. | planned (T-647) |
 

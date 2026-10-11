@@ -40,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [single-node]
+        example: [single-node, hyperdx]
     steps:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
