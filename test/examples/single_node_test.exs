@@ -48,14 +48,18 @@ defmodule Topology.Examples.SingleNodeTest do
   end
 
   test "the ClickHouse edge answers HyperDX's connection test" do
-    response =
+    probe = fn ->
       Req.get!("http://localhost:#{Example.host_port(@example, :clickhouse)}/",
         params: [query: "SELECT 1"],
         headers: [{"x-clickhouse-key", Example.api_key()}],
         retry: false
       )
+    end
 
-    assert response.status == 200
+    Eventually.until(fn -> probe.().status == 200 end, 15, 2_000)
+    response = probe.()
+
+    assert response.status == 200, "the edge answered #{response.status}: #{response.body}"
     assert String.trim(response.body) == "1"
   end
 

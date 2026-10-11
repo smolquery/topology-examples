@@ -1,0 +1,68 @@
+# Creates default.otel_logs with the columns HyperDX's default log source
+# reads (docs/clickstack.md), clustered by ServiceName, Timestamp, and
+# writes the 120 rows upstream's HyperDX search fixture was recorded
+# against: 2026-09-19 10:11:00 plus one second per row, api and worker
+# alternating, every fourth row an error with http.status 500. The suite
+# replays that fixture against these rows. The insertId makes a re-run of
+# the Job land the rows once.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed-otel-logs
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: seed
+          image: curlimages/curl:8.22.0
+          command:
+            - sh
+            - -ec
+            - |
+              api=http://smolquery:4000
+              auth='authorization: Bearer kind-only-api-key'
+              json='content-type: application/json'
+              until curl -sSf -o /dev/null "$api/healthz"; do sleep 2; done
+
+              curl -sS -o /dev/null -w 'dataset default: %{http_code}\n' -H "$auth" -H "$json" \
+                -d '{"id": "default"}' "$api/v1/datasets"
+              curl -sS -o /dev/null -w 'table otel_logs: %{http_code}\n' -H "$auth" -H "$json" \
+                -d '{"id": "otel_logs", "schema": [
+                  {"name": "Timestamp", "type": "TIMESTAMP_NS", "nullable": false},
+                  {"name": "TraceId", "type": "STRING"},
+                  {"name": "SpanId", "type": "STRING"},
+                  {"name": "SeverityText", "type": "STRING"},
+                  {"name": "SeverityNumber", "type": "INT64"},
+                  {"name": "ServiceName", "type": "STRING"},
+                  {"name": "Body", "type": "STRING"},
+                  {"name": "ResourceAttributes", "type": "MAP(STRING, STRING)"},
+                  {"name": "ScopeName", "type": "STRING"},
+                  {"name": "LogAttributes", "type": "MAP(STRING, STRING)"}
+                ]}' "$api/v1/datasets/default/tables"
+              curl -sS -o /dev/null -w 'clustering: %{http_code}\n' -X PATCH -H "$auth" -H "$json" \
+                -d '{"clustering": ["ServiceName", "Timestamp"]}' "$api/v1/datasets/default/tables/otel_logs"
+
+              rows=/tmp/rows.ndjson
+              : > "$rows"
+              i=0
+              while [ "$i" -lt 120 ]; do
+                minute=$((11 + i / 60)); second=$((i % 60))
+                ts=$(printf '2026-09-19T10:%02d:%02d.000000000Z' "$minute" "$second")
+                if [ $((i % 2)) -eq 0 ]; then service=api; else service=worker; fi
+                if [ $((i % 4)) -eq 0 ]; then
+                  severity=error; number=17; status=500; body="payment failed, id=$i user_id=u$i"
+                else
+                  severity=info; number=9; status=200; body="user login ok id=$i"
+                fi
+                printf '{"Timestamp":"%s","ServiceName":"%s","SeverityText":"%s","SeverityNumber":%s,"Body":"%s","LogAttributes":{"http.status":"%s"},"ResourceAttributes":{"host.name":"%s-0"},"ScopeName":"seed"}\n' \
+                  "$ts" "$service" "$severity" "$number" "$body" "$status" "$service" >> "$rows"
+                i=$((i + 1))
+              done
+
+              status=$(curl -sS -o /tmp/insert.json -w '%{http_code}' -H "$auth" \
+                -H 'content-type: application/x-ndjson' --data-binary "@$rows" \
+                "$api/v1/datasets/default/tables/otel_logs/insert?insertId=seed-otel-logs-v1")
+              echo "insert: $status $(cat /tmp/insert.json)"
+              [ "$status" = 200 ]
