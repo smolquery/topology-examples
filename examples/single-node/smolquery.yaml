@@ -1,0 +1,92 @@
+# The one node. A StatefulSet rather than a Deployment so the pod keeps its
+# name and its volume across restarts: /data holds the hot tier's
+# micro-segments and manifest logs, the sealed segments, and the SQLite
+# DuckLake catalog, and the suite's "rows survive a restart" test is a claim
+# about that volume.
+apiVersion: v1
+kind: Service
+metadata:
+  name: smolquery
+spec:
+  selector:
+    app: smolquery
+  ports:
+    - { name: http, port: 4000 }
+    - { name: web, port: 4002 }
+    - { name: pg, port: 5432 }
+    - { name: clickhouse, port: 8123 }
+    - { name: victoriametrics, port: 8428 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: smolquery
+spec:
+  serviceName: smolquery
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smolquery
+  template:
+    metadata:
+      labels:
+        app: smolquery
+    spec:
+      # Service links would inject SMOLQUERY_PORT=tcp://... from the Service
+      # above into the pod, shadowing real config variables.
+      enableServiceLinks: false
+      # SIGTERM drains: buffers flush on shutdown, so a restart loses nothing.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: smolquery
+          image: smolquery
+          envFrom:
+            - secretRef:
+                name: smolquery-env
+          env:
+            - name: SMOLQUERY_ROLES
+              value: all
+            # Every edge binds loopback by default; this is the one example
+            # where all of them are on one pod, so all of them are opened.
+            - name: SMOLQUERY_WEB_IP
+              value: 0.0.0.0
+            - name: SMOLQUERY_PG_IP
+              value: 0.0.0.0
+            - name: SMOLQUERY_CLICKHOUSE_IP
+              value: 0.0.0.0
+            - name: SMOLQUERY_VICTORIAMETRICS_IP
+              value: 0.0.0.0
+          ports:
+            - { name: http, containerPort: 4000 }
+            - { name: web, containerPort: 4002 }
+            - { name: metrics, containerPort: 4003 }
+            - { name: pg, containerPort: 5432 }
+            - { name: clickhouse, containerPort: 8123 }
+            - { name: victoriametrics, containerPort: 8428 }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 4000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

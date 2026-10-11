@@ -1,0 +1,17 @@
+/_build/
+/deps/
+/doc/
+/cover/
+erl_crash.dump
+*.ez
+
+# Claude Code per-user directory: skill symlinks and git-ignored *.env creds
+# (see skills/README.md). Nothing under .claude/ is committed.
+/.claude/
+
+# The repo-scoped kubeconfig scripts/kind-up.sh writes; it pins kubectl to
+# the kind-topology-examples context and holds a client key.
+/.kube/
+
+# Self-signed certificates an example's up script generates.
+examples/*/tls/

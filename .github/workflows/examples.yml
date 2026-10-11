@@ -1,0 +1,83 @@
+name: Examples
+
+# One job per example: bring up kind, apply the example, run its suite. The
+# matrix grows as examples land (see README.md for the list and their
+# tracker keys). The checks job is the plain code gate and needs no cluster.
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  MIX_ENV: test
+
+jobs:
+  checks:
+    name: Checks (mix ci)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29.0.2"
+          elixir-version: "1.20.2"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('mix.lock') }}
+          restore-keys: mix-${{ runner.os }}-
+      - run: mix deps.get
+      - run: mix ci
+
+  example:
+    name: ${{ matrix.example }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        example: [single-node]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29.0.2"
+          elixir-version: "1.20.2"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('mix.lock') }}
+          restore-keys: mix-${{ runner.os }}-
+      - run: mix deps.get
+
+      # Runners ship docker and kubectl but not kind; scripts/kind-up.sh
+      # creates the cluster from kind/cluster.yaml itself.
+      - name: Install kind
+        run: |
+          curl -fsSLo ./kind https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64
+          sudo install -m 0755 ./kind /usr/local/bin/kind
+          kind version
+
+      - run: ./scripts/kind-up.sh
+      - run: ./scripts/example-up.sh ${{ matrix.example }}
+      - run: ./scripts/example-test.sh ${{ matrix.example }}
+
+      - name: State on failure
+        if: failure()
+        env:
+          KUBECONFIG: ${{ github.workspace }}/.kube/config
+        run: |
+          ns=${{ matrix.example }}
+          kubectl --context kind-topology-examples -n "$ns" get pods -o wide || true
+          kubectl --context kind-topology-examples -n "$ns" describe pods || true
+          kubectl --context kind-topology-examples -n "$ns" get events --sort-by=.lastTimestamp || true
+          for pod in $(kubectl --context kind-topology-examples -n "$ns" get pods -o name); do
+            kubectl --context kind-topology-examples -n "$ns" logs "$pod" --all-containers --tail=200 --prefix || true
+            kubectl --context kind-topology-examples -n "$ns" logs "$pod" --all-containers --tail=200 --prefix --previous || true
+          done

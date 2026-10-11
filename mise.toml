@@ -1,0 +1,45 @@
+# The toolchain is upstream smolquery's (chasers/smolquery .tool-versions),
+# so the suites compile against the same OTP and Elixir its own tests do.
+# kind is the version upstream's Cluster workflow installs.
+[tools]
+erlang = "29.0.2"
+elixir = "1.20.2-otp-29"
+kind = "0.32.0"
+kubectl = "1.34.1"
+
+[env]
+# Pin kubectl to this repo's single-context kubeconfig, written by
+# scripts/kind-up.sh, so a bare kubectl can never reach an ambient cluster.
+KUBECONFIG = "{{config_root}}/.kube/config"
+
+[tasks.setup]
+description = "Install Hex and rebar, fetch deps"
+run = ["mix local.hex --force", "mix local.rebar --force", "mix deps.get"]
+
+[tasks.kind-up]
+description = "Create the kind cluster every example deploys into (idempotent)"
+run = "./scripts/kind-up.sh"
+
+[tasks.kind-down]
+description = "Delete the kind cluster and every example in it"
+run = "kind delete cluster --name topology-examples"
+
+[tasks.up]
+description = "Apply one example into its namespace and wait for it: mise run up single-node"
+run = './scripts/example-up.sh {{arg(name="example")}}'
+
+[tasks.down]
+description = "Delete one example's namespace: mise run down single-node"
+run = './scripts/example-down.sh {{arg(name="example")}}'
+
+[tasks.test]
+description = "Run one example's suite against the running example: mise run test single-node"
+run = './scripts/example-test.sh {{arg(name="example")}}'
+
+[tasks.precommit]
+description = "The mutating gate: compile -Werror, format, credo --strict, the unit tests"
+run = "mix precommit"
+
+[tasks.ci]
+description = "The non-mutating gate CI runs"
+run = "mix ci"

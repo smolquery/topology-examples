@@ -1,0 +1,45 @@
+# One kind cluster for every example. kind fixes host port mappings when the
+# cluster is created, so every example's NodePorts are declared here up
+# front, one block of host ports per example. Each example's
+# external-service.yaml uses the nodePorts below; lib/topology/example.ex
+# carries the same table for the suites.
+#
+#   single-node              911xx -> 91xx
+#   split-compute            312xx -> 92xx
+#   federated-read-clusters  313xx -> 93xx
+#   hyperdx                  314xx -> 94xx
+#   victoriametrics          315xx -> 95xx
+#   postgres-fdw             316xx -> 96xx
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: topology-examples
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # single-node: api, web, pg, clickhouse, victoriametrics
+      - { containerPort: 31100, hostPort: 9100 }
+      - { containerPort: 31102, hostPort: 9102 }
+      - { containerPort: 31105, hostPort: 9105 }
+      - { containerPort: 31123, hostPort: 9123 }
+      - { containerPort: 31128, hostPort: 9128 }
+      # split-compute: ingest-tier api, query-tier api, web, pg
+      - { containerPort: 31200, hostPort: 9200 }
+      - { containerPort: 31201, hostPort: 9201 }
+      - { containerPort: 31202, hostPort: 9202 }
+      - { containerPort: 31205, hostPort: 9205 }
+      # federated-read-clusters: writer api, reader-1 api, reader-2 api
+      - { containerPort: 31300, hostPort: 9300 }
+      - { containerPort: 31301, hostPort: 9301 }
+      - { containerPort: 31302, hostPort: 9302 }
+      # hyperdx: api, hyperdx ui, clickhouse edge
+      - { containerPort: 31400, hostPort: 9400 }
+      - { containerPort: 31408, hostPort: 9408 }
+      - { containerPort: 31423, hostPort: 9423 }
+      # victoriametrics: api, the edge, grafana
+      - { containerPort: 31500, hostPort: 9500 }
+      - { containerPort: 31528, hostPort: 9528 }
+      - { containerPort: 31530, hostPort: 9530 }
+      # postgres-fdw: api, smolquery pg, the OLTP postgres
+      - { containerPort: 31600, hostPort: 9600 }
+      - { containerPort: 31605, hostPort: 9605 }
+      - { containerPort: 31606, hostPort: 9606 }
