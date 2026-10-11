@@ -1,0 +1,39 @@
+# victoriametrics: smolquery as the metrics store.
+#
+# vmagent scrapes every smolquery pod's /metrics and remote-writes the
+# samples to smolquery's own VictoriaMetrics edge; Grafana reads them back
+# through a provisioned Prometheus datasource pointed at that edge. One
+# smolquery pod with every role and a SQLite catalog, as in single-node.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: victoriametrics
+
+resources:
+  - namespace.yaml
+  - smolquery.yaml
+  - seed-job.yaml
+  - vmagent.yaml
+  - grafana.yaml
+  - external-service.yaml
+
+images:
+  - name: smolquery
+    newName: ghcr.io/chasers/smolquery
+    newTag: v0.21.0
+
+# kind-only literals, as upstream's kind overlay does it. The internal
+# secret is set rather than generated per boot because vmagent presents it
+# to the /metrics listener.
+secretGenerator:
+  - name: smolquery-env
+    literals:
+      - SMOLQUERY_API_KEY=kind-only-api-key
+      - SMOLQUERY_INTERNAL_SECRET=kind-only-internal-secret
+      - SMOLQUERY_WEB_USERNAME=smolquery
+      - SMOLQUERY_WEB_PASSWORD=kind-only-web-password
+      - SMOLQUERY_WEB_CHECK_ORIGIN=false
+      - SMOLQUERY_SECRET_KEY_BASE=kind-only-secret-key-base-never-use-this-outside-a-local-kind-cluster
+
+generatorOptions:
+  disableNameSuffixHash: true

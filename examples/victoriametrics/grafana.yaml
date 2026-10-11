@@ -1,0 +1,157 @@
+# Grafana with a provisioned Prometheus datasource at smolquery's
+# VictoriaMetrics edge, and one dashboard that reads it. Basic auth under
+# any user name with the API key as the password is what the edge takes;
+# the datasource uid is fixed so the suite can ask Grafana for its health
+# without looking it up. Anonymous access is off; the admin password is a
+# kind-only literal.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+data:
+  smolquery.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: smolquery
+        uid: smolquery
+        type: prometheus
+        access: proxy
+        url: http://smolquery:8428
+        isDefault: true
+        basicAuth: true
+        basicAuthUser: grafana
+        secureJsonData:
+          basicAuthPassword: kind-only-api-key
+        jsonData:
+          httpMethod: GET
+          timeInterval: 5s
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+data:
+  provider.yaml: |
+    apiVersion: 1
+    providers:
+      - name: topology-examples
+        folder: ""
+        type: file
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+data:
+  smolquery.json: |
+    {
+      "uid": "smolquery-scrapes",
+      "title": "smolquery as the metrics store",
+      "schemaVersion": 39,
+      "refresh": "10s",
+      "time": { "from": "now-15m", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "scrapes per second, by job",
+          "gridPos": { "x": 0, "y": 0, "w": 24, "h": 9 },
+          "datasource": { "type": "prometheus", "uid": "smolquery" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (job) (rate(vm_promscrape_scrapes_total[1m]))",
+              "legendFormat": "{{job}}"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "remote-written samples per second, by result",
+          "gridPos": { "x": 0, "y": 9, "w": 24, "h": 9 },
+          "datasource": { "type": "prometheus", "uid": "smolquery" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (result) (rate(smolquery_victoriametrics_samples_total[1m]))",
+              "legendFormat": "{{result}}"
+            }
+          ]
+        }
+      ]
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+spec:
+  selector:
+    app: grafana
+  ports:
+    - name: http
+      port: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:13.2.3
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: admin
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: kind-only-grafana-password
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "false"
+            - name: GF_ANALYTICS_REPORTING_ENABLED
+              value: "false"
+            - name: GF_ANALYTICS_CHECK_FOR_UPDATES
+              value: "false"
+          ports:
+            - name: http
+              containerPort: 3000
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+              readOnly: true
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+              readOnly: true
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+      volumes:
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
