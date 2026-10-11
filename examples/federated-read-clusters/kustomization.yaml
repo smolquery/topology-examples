@@ -108,7 +108,9 @@ secretGenerator:
       - SMOLQUERY_WEB_PASSWORD=kind-only-web-password
       - SMOLQUERY_WEB_CHECK_ORIGIN=false
       - SMOLQUERY_SECRET_KEY_BASE=kind-only-secret-key-base-never-use-this-outside-a-local-kind-cluster
-      - SMOLQUERY_CREDENTIAL_KEY=a2luZC1vbmx5LWNyZWRlbnRpYWwta2V5LTMyLWJ5dGVzIQ==
+      # 32 bytes once base64-decoded, or the node counts itself as having
+      # no key and refuses every /v1/connections call with a 503.
+      - SMOLQUERY_CREDENTIAL_KEY=a2luZC1vbmx5LWNyZWRlbnRpYWwta2V5LTMyYnl0ZSE=
       - SMOLQUERY_S3_BUCKET=smolquery-sealed
       - SMOLQUERY_S3_ACCESS_KEY_ID=smolquery
       - SMOLQUERY_S3_SECRET_ACCESS_KEY=smolquery-secret
