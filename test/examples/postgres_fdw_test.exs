@@ -11,6 +11,7 @@ defmodule Topology.Examples.PostgresFdwTest do
   use ExUnit.Case, async: false
 
   alias Topology.Api
+  alias Topology.Eventually
   alias Topology.Example
 
   @moduletag :postgres_fdw
@@ -36,12 +37,7 @@ defmodule Topology.Examples.PostgresFdwTest do
 
     {:ok, oltp} = oltp_connect()
     Postgrex.query!(oltp, "CREATE SCHEMA #{dataset}", [])
-
-    Postgrex.query!(
-      oltp,
-      "IMPORT FOREIGN SCHEMA #{dataset} FROM SERVER smol INTO #{dataset}",
-      []
-    )
+    import_foreign_table!(oltp, dataset, "events")
 
     %{api: api, dataset: dataset, oltp: oltp}
   end
@@ -106,12 +102,7 @@ defmodule Topology.Examples.PostgresFdwTest do
 
       create_events_table!(api, dataset, "pinned")
       Api.insert!(api, dataset, "pinned", events(1..50))
-
-      Postgrex.query!(
-        oltp,
-        "IMPORT FOREIGN SCHEMA #{dataset} LIMIT TO (pinned) FROM SERVER smol INTO #{dataset}",
-        []
-      )
+      import_foreign_table!(oltp, dataset, "pinned")
 
       count = "SELECT count(*) FROM #{dataset}.pinned"
 
@@ -206,6 +197,23 @@ defmodule Topology.Examples.PostgresFdwTest do
       password: @oltp_password,
       database: "app",
       ssl: false
+    )
+  end
+
+  defp import_foreign_table!(oltp, dataset, table) do
+    import_sql =
+      "IMPORT FOREIGN SCHEMA #{dataset} LIMIT TO (#{table}) FROM SERVER smol INTO #{dataset}"
+
+    exists = "SELECT to_regclass('#{dataset}.#{table}') IS NOT NULL"
+
+    Eventually.until!(
+      fn ->
+        Postgrex.query!(oltp, import_sql, [])
+        scalar!(oltp, exists)
+      end,
+      30,
+      1_000,
+      "#{dataset}.#{table} was never imported from server smol"
     )
   end
 

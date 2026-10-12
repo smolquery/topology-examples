@@ -1,7 +1,8 @@
 # postgres-fdw: OLTP and OLAP joined from Postgres, and back the other way.
 #
-# One smolquery pod with every role and its Postgres wire listener open, and
-# an OLTP Postgres whose init script creates postgres_fdw, a foreign server
+# One smolquery pod with every role, its DuckLake catalog on the Postgres
+# component and its Postgres wire listener open; and an OLTP Postgres whose
+# init script creates postgres_fdw, a foreign server
 # pointing at that listener, and a seeded users table. The suite imports a
 # smolquery dataset as foreign tables and joins it with users from the
 # Postgres side; then registers the OLTP database as a smolquery connection
@@ -13,6 +14,7 @@ namespace: postgres-fdw
 
 resources:
   - namespace.yaml
+  - ../../components/postgres
   - smolquery.yaml
   - oltp-postgres.yaml
   - external-service.yaml
