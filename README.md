@@ -1,5 +1,7 @@
 # topology-examples
 
+[![Examples](https://github.com/smolquery/topology-examples/actions/workflows/examples.yml/badge.svg)](https://github.com/smolquery/topology-examples/actions/workflows/examples.yml)
+
 Runnable [smolquery](https://github.com/chasers/smolquery) deployment
 topologies. Each one is a kustomization you can apply to a local
 [kind](https://kind.sigs.k8s.io) cluster in one command, a README that says
@@ -15,7 +17,7 @@ are the ones worth knowing, side by side.
 |---|---|---|
 | [`single-node`](examples/single-node) | Everything in one pod: every role, every edge, one volume. | green in CI (T-641) |
 | [`split-compute`](examples/split-compute) | Separate compute for ingest, buffer, query and storage; Postgres catalog; RustFS object store. The Supabase sandbox shape. | green in CI (T-642) |
-| [`federated-read-clusters`](examples/federated-read-clusters) | One writer seals into a lake; independent read clusters attach it as a federated DuckLake connection. | written; the lake tests wait on upstream T-650 (T-644) |
+| [`federated-read-clusters`](examples/federated-read-clusters) | One writer seals into a lake; independent read clusters attach it as a federated DuckLake connection. | green in CI; the three lake-attach tests skip until upstream T-650 ships (T-644) |
 | [`hyperdx`](examples/hyperdx) | HyperDX (ClickStack) reading logs through the ClickHouse edge. | green in CI (T-645) |
 | [`victoriametrics`](examples/victoriametrics) | smolquery as the metrics store behind vmagent and Grafana. | green in CI (T-646) |
 | [`postgres-fdw`](examples/postgres-fdw) | OLTP and OLAP joined from Postgres over `postgres_fdw`, and back the other way. | green in CI (T-647) |
@@ -32,6 +34,7 @@ mise run kind-up              # one kind cluster for every example
 mise run up single-node       # apply the example, wait for it
 mise run test single-node     # its ExUnit suite
 mise run down single-node     # delete its namespace; the cluster stays
+mise run kind-down            # delete the cluster
 ```
 
 Each example deploys into a namespace named after it, so several can be up
@@ -59,6 +62,8 @@ run, when it is not. The shared moves live in `lib/topology/`:
   `insertId` and retries, queries.
 - `Topology.Example`: each example's namespace, host ports and credentials.
 - `Topology.Eventually`: polling for things that converge on their own time.
+- `Topology.ObjectStore`: what the sealed tier wrote, listed through the S3
+  API from inside the cluster.
 
 ## Upstream is pinned, not vendored
 
