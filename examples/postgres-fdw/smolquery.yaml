@@ -1,8 +1,10 @@
-# The OLAP side: one smolquery pod with every role. The Postgres wire
-# listener (pg) is bound to the pod so the OLTP Postgres can reach it as a
-# foreign server. It runs without TLS here, a kind-only choice: beyond one
-# node, set SMOLQUERY_PG_TLS_CERT/_KEY or put a TLS terminator in front
-# (docs/postgres-wire.md).
+# The OLAP side: one smolquery pod with every role, its DuckLake catalog on
+# the Postgres component (SMOLQUERY_CATALOG alone; the SQLite default locks
+# when the wire listener's query jobs and the API's writes land together).
+# The Postgres wire listener (pg) is bound to the pod so the OLTP Postgres
+# can reach it as a foreign server. It runs without TLS here, a kind-only
+# choice: beyond one node, set SMOLQUERY_PG_TLS_CERT/_KEY or put a TLS
+# terminator in front (docs/postgres-wire.md).
 apiVersion: v1
 kind: Service
 metadata:
@@ -41,6 +43,8 @@ spec:
           env:
             - name: SMOLQUERY_ROLES
               value: all
+            - name: SMOLQUERY_CATALOG
+              value: "postgres:host=postgres dbname=smolquery user=postgres password=postgres"
             - name: SMOLQUERY_WEB_IP
               value: 0.0.0.0
             - name: SMOLQUERY_PG_IP

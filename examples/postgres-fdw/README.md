@@ -5,6 +5,9 @@ holding a `users` table attaches smolquery's Postgres wire listener as a
 foreign server, imports a smolquery dataset as foreign tables, and joins
 them in ordinary SQL. In the other direction, smolquery registers that
 Postgres as a federated connection and joins its rows from the OLAP side.
+smolquery keeps its DuckLake catalog on the shared Postgres component: the
+wire listener runs a query job per foreign scan, and the SQLite default
+locks when those land alongside the API's writes.
 
 ```
        postgres_fdw: IMPORT FOREIGN SCHEMA, scans and aggregates pushed down
