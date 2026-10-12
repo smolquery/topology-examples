@@ -1,0 +1,16 @@
+# The api StatefulSet is the ingest front door only. Roles are strictly
+# local: without `query` this node answers a query with "the query service
+# is not available here", which is what keeps ingest and query apart. The
+# query and web roles live on statefulset-query.yaml.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: smolquery-api
+spec:
+  template:
+    spec:
+      containers:
+        - name: smolquery
+          env:
+            - name: SMOLQUERY_ROLES
+              value: api,ingest

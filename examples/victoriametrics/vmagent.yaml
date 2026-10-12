@@ -1,0 +1,148 @@
+# vmagent: scrapes every smolquery pod's /metrics and remote-writes the
+# samples to smolquery's VictoriaMetrics edge, which is its only sink.
+#
+# The /metrics listener answers to the internal secret, so the scrape job
+# sends it as a header; vmagent expands %{ENV} in its config. Pod discovery
+# needs a ClusterRole, as the Kubernetes service discovery reads endpoints
+# across the API; it is bound to this namespace's ServiceAccount only. The
+# init container waits for the seed Job's table, so the first write never
+# races the table's creation on the SQLite catalog.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vmagent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vmagent-victoriametrics-example
+rules:
+  - apiGroups: [""]
+    resources: [endpoints, pods, services, nodes]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vmagent-victoriametrics-example
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vmagent-victoriametrics-example
+subjects:
+  - kind: ServiceAccount
+    name: vmagent
+    namespace: victoriametrics
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vmagent-scrape
+data:
+  scrape.yml: |
+    global:
+      scrape_interval: 5s
+      external_labels:
+        cluster: topology-examples
+
+    scrape_configs:
+      - job_name: smolquery
+        headers:
+          - "x-smolquery-internal: %{SMOLQUERY_INTERNAL_SECRET}"
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - victoriametrics
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: metrics
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: role
+
+      - job_name: vmagent
+        static_configs:
+          - targets: ["127.0.0.1:8429"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vmagent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vmagent
+  template:
+    metadata:
+      labels:
+        app: vmagent
+    spec:
+      serviceAccountName: vmagent
+      initContainers:
+        - name: wait-for-table
+          image: curlimages/curl:8.22.0
+          env:
+            - name: SMOLQUERY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: smolquery-env
+                  key: SMOLQUERY_API_KEY
+          command:
+            - sh
+            - -c
+            - |
+              until curl -fsS -o /dev/null -H "authorization: Bearer $SMOLQUERY_API_KEY" \
+                http://smolquery:4000/v1/datasets/metrics/tables/samples; do sleep 2; done
+      containers:
+        - name: vmagent
+          image: victoriametrics/vmagent:v1.153.0
+          args:
+            - -promscrape.config=/config/scrape.yml
+            - -remoteWrite.url=http://smolquery:8428/api/v1/write
+            - -remoteWrite.bearerTokenFile=/creds/SMOLQUERY_API_KEY
+            - -remoteWrite.tmpDataPath=/vmagent-data
+            - -remoteWrite.maxDiskUsagePerURL=512MiB
+            - -httpListenAddr=:8429
+          env:
+            - name: SMOLQUERY_INTERNAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: smolquery-env
+                  key: SMOLQUERY_INTERNAL_SECRET
+          ports:
+            - name: http
+              containerPort: 8429
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: creds
+              mountPath: /creds
+              readOnly: true
+            - name: data
+              mountPath: /vmagent-data
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8429
+            initialDelaySeconds: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+      volumes:
+        - name: config
+          configMap:
+            name: vmagent-scrape
+        - name: creds
+          secret:
+            secretName: smolquery-env
+            items:
+              - key: SMOLQUERY_API_KEY
+                path: SMOLQUERY_API_KEY
+        - name: data
+          emptyDir:
+            sizeLimit: 1Gi

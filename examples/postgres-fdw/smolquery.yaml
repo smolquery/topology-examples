@@ -1,0 +1,79 @@
+# The OLAP side: one smolquery pod with every role. The Postgres wire
+# listener (pg) is bound to the pod so the OLTP Postgres can reach it as a
+# foreign server. It runs without TLS here, a kind-only choice: beyond one
+# node, set SMOLQUERY_PG_TLS_CERT/_KEY or put a TLS terminator in front
+# (docs/postgres-wire.md).
+apiVersion: v1
+kind: Service
+metadata:
+  name: smolquery
+spec:
+  selector:
+    app: smolquery
+  ports:
+    - { name: http, port: 4000 }
+    - { name: web, port: 4002 }
+    - { name: pg, port: 5432 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: smolquery
+spec:
+  serviceName: smolquery
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smolquery
+  template:
+    metadata:
+      labels:
+        app: smolquery
+    spec:
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: smolquery
+          image: smolquery
+          envFrom:
+            - secretRef:
+                name: smolquery-env
+          env:
+            - name: SMOLQUERY_ROLES
+              value: all
+            - name: SMOLQUERY_WEB_IP
+              value: 0.0.0.0
+            - name: SMOLQUERY_PG_IP
+              value: 0.0.0.0
+          ports:
+            - { name: http, containerPort: 4000 }
+            - { name: web, containerPort: 4002 }
+            - { name: metrics, containerPort: 4003 }
+            - { name: pg, containerPort: 5432 }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 4000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

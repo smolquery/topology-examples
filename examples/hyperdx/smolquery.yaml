@@ -1,0 +1,125 @@
+# One all-role smolquery node on a Postgres catalog: upstream's symmetric
+# server shape (deploy/overlays/kind-symmetric/server.yaml) at one replica.
+# The headless Service gives the pod the stable DNS name its Erlang node
+# name is derived from, and the buffer-fleet envs tell the release the
+# expected buffer node is smolquery-0, which is this pod.
+apiVersion: v1
+kind: Service
+metadata:
+  name: smolquery-headless
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    cluster: smolquery
+  ports:
+    - { name: epmd, port: 4369 }
+    - { name: gen-rpc, port: 5369 }
+    - { name: hot-server, port: 4001 }
+    - { name: metrics, port: 4003 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smolquery
+spec:
+  selector:
+    app: smolquery
+  ports:
+    - { name: http, port: 4000 }
+    - { name: web, port: 4002 }
+    - { name: clickhouse, port: 8123 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: smolquery
+spec:
+  serviceName: smolquery-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smolquery
+  template:
+    metadata:
+      labels:
+        app: smolquery
+        cluster: smolquery
+    spec:
+      # Service links would inject SMOLQUERY_PORT=tcp://... from the Service
+      # above into the pod, shadowing real config variables.
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+          command: ["sh", "-c", "until pg_isready -h postgres -U postgres; do sleep 1; done"]
+      containers:
+        - name: smolquery
+          image: smolquery
+          envFrom:
+            - secretRef:
+                name: smolquery-env
+          env:
+            - name: SMOLQUERY_ROLES
+              value: all
+            # One buffer node: SMOLQUERY_BUFFER_REPLICATION stays unset
+            # (single copy); the release refuses any value below 2.
+            - name: SMOLQUERY_BUFFER_REPLICAS
+              value: "1"
+            - name: SMOLQUERY_BUFFER_STATEFULSET
+              value: smolquery
+            - name: HEADLESS_SERVICE
+              value: smolquery-headless
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: SMOLQUERY_WEB_IP
+              value: 0.0.0.0
+            - name: SMOLQUERY_CLICKHOUSE_IP
+              value: 0.0.0.0
+            # What a first HyperDX run is for: every statement the edge could
+            # not answer is logged with its literals, so the pod log is the
+            # list of what to build next (docs/clickstack.md).
+            - name: SMOLQUERY_CLICKHOUSE_UNANSWERED_LOG
+              value: verbatim
+          ports:
+            - { name: http, containerPort: 4000 }
+            - { name: hot-server, containerPort: 4001 }
+            - { name: web, containerPort: 4002 }
+            - { name: metrics, containerPort: 4003 }
+            - { name: clickhouse, containerPort: 8123 }
+            - { name: epmd, containerPort: 4369 }
+            - { name: gen-rpc, containerPort: 5369 }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 4000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

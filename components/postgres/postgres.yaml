@@ -28,6 +28,12 @@ spec:
       containers:
         - name: postgres
           image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+          # Every smolquery role that resolves the lake opens its own Postgrex
+          # read pool (4 connections, SMOLQUERY_CATALOG_READER_POOL_SIZE) plus
+          # DuckDB's libpq connections and node discovery. A fleet of eight
+          # pods exhausted the default 100 (FATAL 53300 too_many_connections)
+          # the moment it booted, so the limit is raised well past it.
+          args: ["-c", "max_connections=500"]
           env:
             - name: POSTGRES_USER
               value: postgres

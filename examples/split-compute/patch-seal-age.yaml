@@ -1,0 +1,16 @@
+# A quiet table seals its tail SMOLQUERY_SEAL_MAX_AGE_MS after its oldest
+# unsealed micro-segment, 60 s by default. The suite waits on a seal, so the
+# buffer pods seal after 15 s here. Production keeps the default: a shorter
+# age means more, smaller sealed files for compaction to re-merge.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: smolquery-buffer
+spec:
+  template:
+    spec:
+      containers:
+        - name: smolquery
+          env:
+            - name: SMOLQUERY_SEAL_MAX_AGE_MS
+              value: "15000"
