@@ -57,13 +57,14 @@ curl -H 'authorization: Bearer kind-only-api-key' -H 'content-type: application/
        "database": "smolquery", "username": "postgres", "password": "postgres",
        "sslmode": "disable", "data_path": "/data/ducklake"}' \
   http://localhost:9301/v1/connections
-curl -X POST -H 'authorization: Bearer kind-only-api-key' http://localhost:9301/v1/connections/writer/test
+curl -H 'authorization: Bearer kind-only-api-key' -H 'content-type: application/json' \
+  -d '{"query": "SELECT count(*) FROM writer.<dataset>.events"}' \
+  http://localhost:9301/v1/queries
 ```
 
 ## What the suite proves
 
-- Each reader registers the writer's lake and the connection test reads a
-  row through it.
+- Each reader registers the writer's lake at the writer's own data path.
 - Rows inserted at the writer are, once sealed, read from both readers as
   `writer.<dataset>.<table>`.
 - A reader joins lake rows with rows of its own in one query.
@@ -80,6 +81,19 @@ so a reader's view lags the writer by the seal age (`SMOLQUERY_SEAL_MAX_AGE_MS`,
 busy one. The writer's own queries have no such lag: they union the hot
 tier with the catalog snapshot. Put latency-sensitive reads on the writer
 and everything else on readers.
+
+## Limits worth knowing
+
+- `POST /v1/connections/writer/test` answers 422 on a reader, in smolquery
+  v0.23.0. The route probes a lake by reading its first table in a
+  throwaway engine that carries only the connection's own S3 secret, and a
+  local `data_path` takes none, so the probe opens an `s3://` file with no
+  credential. Queries are unaffected: a query job carries the node's
+  `SMOLQUERY_S3_*` secret. Upstream task T-659 gives the probe the same
+  secret; the suite leaves the route out until then.
+- A reader's own catalog is SQLite on an `emptyDir`: a restarted reader
+  comes back with no connection row and must register the lake again. Give
+  a real reader a volume, or register at boot.
 
 ## The trust boundary
 
