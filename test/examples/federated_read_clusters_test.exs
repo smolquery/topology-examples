@@ -7,13 +7,9 @@ defmodule Topology.Examples.FederatedReadClustersTest do
   `mise run up federated-read-clusters`, then
   `mise run test federated-read-clusters`.
 
-  A reader must name the lake's own data path, `/data/ducklake`, and no
-  release yet lets a deployment allow a local path (T-643, upstream T-650).
-  `@upstream_landed`
-  says which world the suite asserts: until the upstream change ships,
-  registration is expected to answer the documented 400 and the lake tests
-  are skipped; flipping the attribute, and the pinned version, is the whole
-  change afterwards.
+  A reader names the lake's own data path, `/data/ducklake`, which its
+  release allows through `SMOLQUERY_FEDERATION_LOCAL_ROOTS` (upstream T-650,
+  v0.23.0). Before that release every registration answered 400.
   """
 
   use ExUnit.Case, async: false
@@ -28,7 +24,6 @@ defmodule Topology.Examples.FederatedReadClustersTest do
   @moduletag timeout: 900_000
 
   @example "federated-read-clusters"
-  @upstream_landed false
   @rows 300
   @readers [reader_1_api: "reader-1", reader_2_api: "reader-2"]
   @lake %{
@@ -83,24 +78,16 @@ defmodule Topology.Examples.FederatedReadClustersTest do
        %{readers: readers} do
     for {pod, reader} <- readers do
       response = Api.post!(reader, "/v1/connections", @lake)
+      assert response.status in [200, 201], "#{pod}: #{inspect(response.body)}"
+      assert response.body["kind"] == "ducklake"
+      assert response.body["dataPath"] == "/data/ducklake"
 
-      if @upstream_landed do
-        assert response.status in [200, 201], "#{pod}: #{inspect(response.body)}"
-        assert response.body["kind"] == "ducklake"
-        assert response.body["dataPath"] == "/data/ducklake"
-
-        probe = Api.post!(reader, "/v1/connections/writer/test", %{})
-        assert probe.status == 200, "#{pod}: #{inspect(probe.body)}"
-      else
-        assert response.status == 400, "#{pod}: #{inspect(response.body)}"
-        assert inspect(response.body) =~ "data_path"
-      end
+      probe = Api.post!(reader, "/v1/connections/writer/test", %{})
+      assert probe.status == 200, "#{pod}: #{inspect(probe.body)}"
     end
   end
 
   describe "with the lake registered" do
-    @describetag skip: not @upstream_landed and "waits on upstream T-650"
-
     setup %{readers: readers} do
       for {_pod, reader} <- readers do
         %{status: status} = Api.post!(reader, "/v1/connections", @lake)

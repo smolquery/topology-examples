@@ -2,7 +2,7 @@
 
 [![Examples](https://github.com/smolquery/topology-examples/actions/workflows/examples.yml/badge.svg)](https://github.com/smolquery/topology-examples/actions/workflows/examples.yml)
 
-Runnable [smolquery](https://github.com/chasers/smolquery) deployment
+Runnable [smolquery](https://github.com/smolquery/smolquery) deployment
 topologies. Each one is a kustomization you can apply to a local
 [kind](https://kind.sigs.k8s.io) cluster in one command, a README that says
 what the shape is for, and an ExUnit suite that proves the property the
@@ -17,7 +17,7 @@ are the ones worth knowing, side by side.
 |---|---|---|
 | [`single-node`](examples/single-node) | Everything in one pod: every role, every edge, one volume. | green in CI (T-641) |
 | [`split-compute`](examples/split-compute) | Separate compute for ingest, buffer, query and storage; Postgres catalog; RustFS object store. The Supabase sandbox shape. | green in CI (T-642) |
-| [`federated-read-clusters`](examples/federated-read-clusters) | One writer seals into a lake; independent read clusters attach it as a federated DuckLake connection. | green in CI; the three lake-attach tests skip until upstream T-650 ships (T-644) |
+| [`federated-read-clusters`](examples/federated-read-clusters) | One writer seals into a lake; independent read clusters attach it as a federated DuckLake connection. | green in CI (T-644) |
 | [`hyperdx`](examples/hyperdx) | HyperDX (ClickStack) reading logs through the ClickHouse edge. | green in CI (T-645) |
 | [`victoriametrics`](examples/victoriametrics) | smolquery as the metrics store behind vmagent and Grafana. | green in CI (T-646) |
 | [`postgres-fdw`](examples/postgres-fdw) | OLTP and OLAP joined from Postgres over `postgres_fdw`, and back the other way. | green in CI (T-647) |
@@ -69,7 +69,7 @@ run, when it is not. The shared moves live in `lib/topology/`:
 
 Examples that use the standard fleet reference upstream's
 `deploy/base` by git ref, and every example's image is
-`ghcr.io/chasers/smolquery` at one tag (`v0.21.0`). Moving the repo to a
+`ghcr.io/smolquery/smolquery` at one tag (`v0.23.0`). Moving the repo to a
 new release is one change.
 
 ## Layout

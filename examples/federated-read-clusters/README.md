@@ -22,19 +22,18 @@ nothing about the writer changes when one comes or goes.
                    └─────────────────┘  └─────────────────┘
 ```
 
-## Status: waits on an upstream change (T-643, T-644)
+## Why a reader names the writer's data path
 
 A reader registers the lake with the writer's own data path,
 `/data/ducklake`: the ducklake extension refuses an `ATTACH` whose
 `DATA_PATH` differs from the one the catalog stores, and smolquery's attach
-never overrides it. smolquery v0.21.0 accepts a local `data_path` only
-under a compile-time `local_roots` list, so `POST /v1/connections` answers
-`400 invalid parameter: data_path` from any release. The manifests already
-carry the variable the upstream task proposes
-(`SMOLQUERY_FEDERATION_LOCAL_ROOTS=/data/ducklake`), and the suite asserts
-the refusal today. When a release ships the variable, flip
-`@upstream_landed` in the test module and bump the pinned version: that is
-the whole change. The upstream task is T-650 in the smolquery project.
+never overrides it, so a wrong path fails loudly instead of reading
+somewhere else. That path is local to the writer, and the lake's files are
+not under it: the writer registers every sealed file by its absolute
+`s3://` location, so a reader needs the writer's bucket (`SMOLQUERY_S3_*`)
+and nothing at that path. A release allows a local `data_path` only under
+`SMOLQUERY_FEDERATION_LOCAL_ROOTS` (smolquery v0.23.0, upstream T-650), so
+the reader secret sets it to `/data/ducklake` exactly: `/` is refused.
 
 ## Run it
 
@@ -64,7 +63,7 @@ curl -X POST -H 'authorization: Bearer kind-only-api-key' http://localhost:9301/
 ## What the suite proves
 
 - Each reader registers the writer's lake and the connection test reads a
-  row through it (today: each reader answers the documented refusal).
+  row through it.
 - Rows inserted at the writer are, once sealed, read from both readers as
   `writer.<dataset>.<table>`.
 - A reader joins lake rows with rows of its own in one query.

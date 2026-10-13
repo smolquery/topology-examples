@@ -13,11 +13,11 @@ the design is plan `PL-75` in the project tracker.
 - `mix precommit` before you are done with a change (compile with
   warnings-as-errors, format, `credo --strict`, the harness's own tests).
   `mix ci` is the non-mutating gate CI runs.
-- One pinned upstream version for the whole repo (`v0.21.0` today): the
+- One pinned upstream version for the whole repo (`v0.23.0` today): the
   image tag in every example's `kustomization.yaml` and the `ref=` of every
   remote base. Bumping is one PR that moves all of them.
 - Upstream manifests are referenced by git ref
-  (`https://github.com/chasers/smolquery//deploy/base?ref=...`), never
+  (`https://github.com/smolquery/smolquery//deploy/base?ref=...`), never
   copied into this repo. An example carries only what upstream does not
   ship (a dedicated query tier, a reader deployment, HyperDX, vmagent,
   Grafana, an OLTP Postgres). The dependencies every fleet needs live in
