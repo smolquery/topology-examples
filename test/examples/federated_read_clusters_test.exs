@@ -7,13 +7,9 @@ defmodule Topology.Examples.FederatedReadClustersTest do
   `mise run up federated-read-clusters`, then
   `mise run test federated-read-clusters`.
 
-  A reader must name the lake's own data path, `/data/ducklake`, and no
-  release yet lets a deployment allow a local path (T-643, upstream T-650).
-  `@upstream_landed`
-  says which world the suite asserts: until the upstream change ships,
-  registration is expected to answer the documented 400 and the lake tests
-  are skipped; flipping the attribute, and the pinned version, is the whole
-  change afterwards.
+  A reader names the lake's own data path, `/data/ducklake`, which its
+  release allows through `SMOLQUERY_FEDERATION_LOCAL_ROOTS` (upstream T-650,
+  v0.23.0). Before that release every registration answered 400.
   """
 
   use ExUnit.Case, async: false
@@ -28,7 +24,6 @@ defmodule Topology.Examples.FederatedReadClustersTest do
   @moduletag timeout: 900_000
 
   @example "federated-read-clusters"
-  @upstream_landed false
   @rows 300
   @readers [reader_1_api: "reader-1", reader_2_api: "reader-2"]
   @lake %{
@@ -79,28 +74,17 @@ defmodule Topology.Examples.FederatedReadClustersTest do
     assert Api.count(writer, "SELECT count(*) AS n FROM #{dataset}.events") == {:ok, @rows}
   end
 
-  test "each reader registers the writer's lake, and the connection test reads through it",
+  test "each reader registers the writer's lake at the writer's own data path",
        %{readers: readers} do
     for {pod, reader} <- readers do
       response = Api.post!(reader, "/v1/connections", @lake)
-
-      if @upstream_landed do
-        assert response.status in [200, 201], "#{pod}: #{inspect(response.body)}"
-        assert response.body["kind"] == "ducklake"
-        assert response.body["dataPath"] == "/data/ducklake"
-
-        probe = Api.post!(reader, "/v1/connections/writer/test", %{})
-        assert probe.status == 200, "#{pod}: #{inspect(probe.body)}"
-      else
-        assert response.status == 400, "#{pod}: #{inspect(response.body)}"
-        assert inspect(response.body) =~ "data_path"
-      end
+      assert response.status in [200, 201], "#{pod}: #{inspect(response.body)}"
+      assert response.body["kind"] == "ducklake"
+      assert response.body["dataPath"] == "/data/ducklake"
     end
   end
 
   describe "with the lake registered" do
-    @describetag skip: not @upstream_landed and "waits on upstream T-650"
-
     setup %{readers: readers} do
       for {_pod, reader} <- readers do
         %{status: status} = Api.post!(reader, "/v1/connections", @lake)
@@ -134,11 +118,17 @@ defmodule Topology.Examples.FederatedReadClustersTest do
 
     test "a reader going away changes nothing for the writer or the other reader", context do
       %{namespace: namespace, writer: writer, readers: readers, dataset: dataset} = context
-      [{survivor, reader_1}, {victim, _reader_2}] = readers
+      [{survivor, reader_1}, {victim, reader_2}] = readers
+      victim_pod = "#{victim}-0"
+      victim_uid = Kube.pod_uid(namespace, victim_pod)
 
-      on_exit(fn -> Kube.rollout_status!(namespace, "statefulset/#{victim}") end)
+      on_exit(fn ->
+        Kube.await_replacement!(namespace, victim_pod, victim_uid)
+        Kube.rollout_status!(namespace, "statefulset/#{victim}")
+        Api.await_healthy!(reader_2)
+      end)
 
-      Kube.kill!(namespace, "#{victim}-0")
+      Kube.kill!(namespace, victim_pod)
 
       assert Api.count(writer, "SELECT count(*) AS n FROM #{dataset}.events") == {:ok, @rows}
 

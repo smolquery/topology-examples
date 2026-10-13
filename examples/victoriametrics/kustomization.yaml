@@ -23,8 +23,8 @@ resources:
 
 images:
   - name: smolquery
-    newName: ghcr.io/chasers/smolquery
-    newTag: v0.21.0
+    newName: ghcr.io/smolquery/smolquery
+    newTag: v0.23.0
 
 # kind-only literals, as upstream's kind overlay does it. The internal
 # secret is set rather than generated per boot because vmagent presents it

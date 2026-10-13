@@ -21,8 +21,8 @@ resources:
 
 images:
   - name: smolquery
-    newName: ghcr.io/chasers/smolquery
-    newTag: v0.21.0
+    newName: ghcr.io/smolquery/smolquery
+    newTag: v0.23.0
 
 configMapGenerator:
   - name: oltp-init

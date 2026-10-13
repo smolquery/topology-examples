@@ -1,4 +1,4 @@
-# The toolchain is upstream smolquery's (chasers/smolquery .tool-versions),
+# The toolchain is upstream smolquery's (smolquery/smolquery .tool-versions),
 # so the suites compile against the same OTP and Elixir its own tests do.
 # kind is the version upstream's Cluster workflow installs.
 [tools]

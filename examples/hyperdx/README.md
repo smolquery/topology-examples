@@ -6,7 +6,7 @@ through the ClickHouse HTTP edge. HyperDX never learns it is not talking to
 ClickHouse: the edge answers `system.tables`, `DESCRIBE`, the parameterised
 search SQL, `hasToken`, `groupUniqArray`, and the `JSON` and
 `JSONCompactEachRowWithNamesAndTypes` formats it asks for. Upstream's recipe
-is [`docs/clickstack.md`](https://github.com/chasers/smolquery/blob/main/docs/clickstack.md).
+is [`docs/clickstack.md`](https://github.com/smolquery/smolquery/blob/main/docs/clickstack.md).
 
 ```
   browser :9408 ─▶ HyperDX ──▶ MongoDB (its own state)

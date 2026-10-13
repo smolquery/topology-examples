@@ -1,6 +1,6 @@
 # Claude Code skills
 
-Copied from upstream [chasers/smolquery](https://github.com/chasers/smolquery)
+Copied from upstream [smolquery/smolquery](https://github.com/smolquery/smolquery)
 `skills/`, because this repo plans in the same tracker: the smolsqls
 database upstream dogfoods. This repo's rows are the project
 `topology-examples` (`P-4`); its design doc is plan `PL-75`.
