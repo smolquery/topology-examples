@@ -118,11 +118,17 @@ defmodule Topology.Examples.FederatedReadClustersTest do
 
     test "a reader going away changes nothing for the writer or the other reader", context do
       %{namespace: namespace, writer: writer, readers: readers, dataset: dataset} = context
-      [{survivor, reader_1}, {victim, _reader_2}] = readers
+      [{survivor, reader_1}, {victim, reader_2}] = readers
+      victim_pod = "#{victim}-0"
+      victim_uid = Kube.pod_uid(namespace, victim_pod)
 
-      on_exit(fn -> Kube.rollout_status!(namespace, "statefulset/#{victim}") end)
+      on_exit(fn ->
+        Kube.await_replacement!(namespace, victim_pod, victim_uid)
+        Kube.rollout_status!(namespace, "statefulset/#{victim}")
+        Api.await_healthy!(reader_2)
+      end)
 
-      Kube.kill!(namespace, "#{victim}-0")
+      Kube.kill!(namespace, victim_pod)
 
       assert Api.count(writer, "SELECT count(*) AS n FROM #{dataset}.events") == {:ok, @rows}
 

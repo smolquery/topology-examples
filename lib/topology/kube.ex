@@ -74,6 +74,42 @@ defmodule Topology.Kube do
     |> Enum.map(&String.replace_prefix(&1, "pod/", ""))
   end
 
+  @doc "The UID of `pod`, or `nil` while no pod of that name exists."
+  @spec pod_uid(String.t(), String.t()) :: String.t() | nil
+  def pod_uid(namespace, pod) do
+    case kubectl(namespace, ["get", "pod", pod, "-o", "jsonpath={.metadata.uid}"]) do
+      {uid, 0} -> String.trim(uid)
+      {_output, _status} -> nil
+    end
+  end
+
+  @doc """
+  Waits until a pod named `pod` exists with a UID other than `old_uid` and
+  is Ready. A rollout wait alone is not enough after a pod deletion: the
+  controller's status can still count the old pod, and the name is reused.
+  """
+  @spec await_replacement!(String.t(), String.t(), String.t(), pos_integer()) :: :ok
+  def await_replacement!(namespace, pod, old_uid, attempts \\ 90) do
+    Topology.Eventually.until!(
+      fn ->
+        uid = pod_uid(namespace, pod)
+        uid != nil and uid != old_uid and ready?(namespace, pod)
+      end,
+      attempts,
+      2_000,
+      "#{pod} was never replaced and ready"
+    )
+  end
+
+  defp ready?(namespace, pod) do
+    jsonpath = "jsonpath={.status.conditions[?(@.type==\"Ready\")].status}"
+
+    match?(
+      {"True", 0},
+      kubectl(namespace, ["get", "pod", pod, "-o", jsonpath])
+    )
+  end
+
   @doc "Deletes `pod` without a grace period: a crash, not a shutdown."
   @spec kill!(String.t(), String.t()) :: :ok
   def kill!(namespace, pod) do
