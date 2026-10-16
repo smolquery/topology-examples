@@ -2,8 +2,9 @@
 # DEFAULT_SOURCES are read only when the team has no connection and no
 # source, which is the first boot against an empty database; to change
 # either, delete the mongo pod (its volume is an emptyDir) and let HyperDX
-# boot again. The source is the one docs/clickstack.md gives, on
-# default.otel_logs; the connection's host must be a name, not an IP.
+# boot again. The sources are the ones docs/clickstack.md gives, on
+# default.otel_logs, default.otel_traces and default.otel_metrics_*; the
+# connection's host must be a name, not an IP.
 apiVersion: v1
 kind: Service
 metadata:
@@ -71,7 +72,7 @@ spec:
     spec:
       containers:
         - name: hyperdx
-          image: docker.hyperdx.io/hyperdx/hyperdx:2.40.0
+          image: docker.hyperdx.io/hyperdx/hyperdx:2.41.0
           env:
             - name: MONGO_URI
               value: mongodb://mongo:27017/hyperdx
@@ -80,6 +81,10 @@ spec:
             - name: DEFAULT_CONNECTIONS
               value: >-
                 [{"name":"smolquery","host":"http://smolquery:8123","username":"default","password":"kind-only-api-key"}]
+            # HyperDX's stock three sources (its docker-compose.yml) without
+            # metadataMaterializedViews, which name rollup tables that do
+            # not exist here, and without the Sessions source. The sources
+            # name each other, so a trace shows its logs and a log its trace.
             - name: DEFAULT_SOURCES
               value: >-
                 [{"name":"Logs","kind":"log","connection":"smolquery",
@@ -94,7 +99,30 @@ spec:
                   "resourceAttributesExpression":"ResourceAttributes",
                   "traceIdExpression":"TraceId",
                   "spanIdExpression":"SpanId",
-                  "defaultTableSelectExpression":"Timestamp,ServiceName,SeverityText,Body"}]
+                  "defaultTableSelectExpression":"Timestamp,ServiceName,SeverityText,Body",
+                  "traceSourceId":"Traces","metricSourceId":"Metrics"},
+                 {"name":"Traces","kind":"trace","connection":"smolquery",
+                  "from":{"databaseName":"default","tableName":"otel_traces"},
+                  "timestampValueExpression":"Timestamp",
+                  "displayedTimestampValueExpression":"Timestamp",
+                  "implicitColumnExpression":"SpanName",
+                  "serviceNameExpression":"ServiceName",
+                  "eventAttributesExpression":"SpanAttributes",
+                  "resourceAttributesExpression":"ResourceAttributes",
+                  "defaultTableSelectExpression":"Timestamp,ServiceName,StatusCode,round(Duration/1e6),SpanName",
+                  "traceIdExpression":"TraceId","spanIdExpression":"SpanId",
+                  "durationExpression":"Duration","durationPrecision":9,
+                  "parentSpanIdExpression":"ParentSpanId","spanNameExpression":"SpanName",
+                  "spanKindExpression":"SpanKind","statusCodeExpression":"StatusCode",
+                  "statusMessageExpression":"StatusMessage",
+                  "logSourceId":"Logs","metricSourceId":"Metrics"},
+                 {"name":"Metrics","kind":"metric","connection":"smolquery",
+                  "from":{"databaseName":"default","tableName":""},
+                  "timestampValueExpression":"TimeUnix",
+                  "resourceAttributesExpression":"ResourceAttributes",
+                  "metricTables":{"gauge":"otel_metrics_gauge","sum":"otel_metrics_sum",
+                                  "histogram":"otel_metrics_histogram"},
+                  "logSourceId":"Logs","traceSourceId":"Traces"}]
           ports:
             - containerPort: 8080
               name: app

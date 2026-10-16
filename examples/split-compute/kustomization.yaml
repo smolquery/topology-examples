@@ -14,7 +14,7 @@ kind: Kustomization
 namespace: split-compute
 
 resources:
-  - https://github.com/smolquery/smolquery//deploy/base?ref=v0.23.0
+  - https://github.com/smolquery/smolquery//deploy/base?ref=v0.24.0
   - ../../components/postgres
   - ../../components/rustfs
   - statefulset-query.yaml
@@ -23,7 +23,7 @@ resources:
 images:
   - name: smolquery
     newName: ghcr.io/smolquery/smolquery
-    newTag: v0.23.0
+    newTag: v0.24.0
 
 # Patches match before the namespace above is applied, and the base's
 # resources carry upstream's namespace, so each names its target by kind
