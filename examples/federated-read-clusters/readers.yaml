@@ -1,9 +1,11 @@
 # Two readers, each its own smolquery: api, query and web only. No buffer
 # or storage role, no CATALOG_DATABASE_URL, so a reader is not a member of
-# the writer's cluster and holds nothing durable: its own DuckLake catalog
-# is SQLite on an emptyDir and stays empty but for the connection row that
-# names the writer's lake. A reader's query jobs read the lake's Parquet
-# files straight from RustFS; the writer never sees them.
+# the writer's cluster. Its own DuckLake catalog is a database of its own
+# on the shared Postgres (reader_1, reader_2; see postgres-init.yaml) that
+# holds nothing but the connection row naming the writer's lake: SQLite
+# would lock under the probe's engine and a query job together. A reader's
+# query jobs read the lake's Parquet files straight from RustFS; the writer
+# never sees them.
 #
 # They are not labelled cluster=smolquery on purpose: that label is what
 # the writer's headless Service selects.
@@ -36,6 +38,10 @@ spec:
     spec:
       enableServiceLinks: false
       terminationGracePeriodSeconds: 30
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+          command: ["sh", "-c", "until pg_isready -h postgres -U postgres; do sleep 1; done"]
       containers:
         - name: smolquery
           image: smolquery
@@ -45,6 +51,8 @@ spec:
           env:
             - name: SMOLQUERY_ROLES
               value: api,query,web
+            - name: SMOLQUERY_CATALOG
+              value: "postgres:host=postgres dbname=reader_1 user=postgres password=postgres"
           ports:
             - { name: http, containerPort: 4000 }
             - { name: web, containerPort: 4002 }
@@ -95,6 +103,10 @@ spec:
     spec:
       enableServiceLinks: false
       terminationGracePeriodSeconds: 30
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+          command: ["sh", "-c", "until pg_isready -h postgres -U postgres; do sleep 1; done"]
       containers:
         - name: smolquery
           image: smolquery
@@ -104,6 +116,8 @@ spec:
           env:
             - name: SMOLQUERY_ROLES
               value: api,query,web
+            - name: SMOLQUERY_CATALOG
+              value: "postgres:host=postgres dbname=reader_2 user=postgres password=postgres"
           ports:
             - { name: http, containerPort: 4000 }
             - { name: web, containerPort: 4002 }

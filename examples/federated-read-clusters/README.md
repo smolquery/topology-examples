@@ -18,7 +18,7 @@ nothing about the writer changes when one comes or goes.
                                   │          │ reader's own S3 secret
   queries :9301 ─▶ ┌─ reader-1 ───┴──┐  ┌────┴─ reader-2 ─┐ ◀─ :9302
                    │ api·query·web   │  │ api·query·web   │
-                   │ catalog: SQLite │  │ catalog: SQLite │
+                   │ catalog: pg db  │  │ catalog: pg db  │
                    └─────────────────┘  └─────────────────┘
 ```
 
@@ -86,9 +86,12 @@ and everything else on readers.
 
 ## Limits worth knowing
 
-- A reader's own catalog is SQLite on an `emptyDir`: a restarted reader
-  comes back with no connection row and must register the lake again. Give
-  a real reader a volume, or register at boot.
+- A reader's own catalog is a database of its own on the shared Postgres
+  (`reader_1`, `reader_2`, created by `postgres-init.yaml` on the component's
+  first boot), because SQLite locks when the connection probe's engine and a
+  query job's history write land together, and the API then answers 500.
+  The database holds one row, the connection; a reader has no data of its
+  own.
 
 ## The trust boundary
 

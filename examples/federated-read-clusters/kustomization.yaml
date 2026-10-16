@@ -3,10 +3,11 @@
 # The writer is upstream's standard fleet (api, buffer, storage) sealing
 # into a lake whose metadata is Postgres and whose files are in RustFS. The
 # readers are two independent smolquery deployments with only the api,
-# query and web roles and a throwaway SQLite catalog of their own: each
-# registers the writer's lake as a `kind: ducklake` connection and serves
-# queries against writer.<dataset>.<table>. Read capacity scales by adding
-# readers, and nothing about the writer changes when one comes or goes.
+# query and web roles and a Postgres catalog database each, holding only
+# the connection row: each registers the writer's lake as a `kind: ducklake`
+# connection and serves queries against writer.<dataset>.<table>. Read
+# capacity scales by adding readers, and nothing about the writer changes
+# when one comes or goes.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -17,6 +18,7 @@ resources:
   - ../../components/postgres
   - ../../components/rustfs
   - readers.yaml
+  - postgres-init.yaml
   - external-service.yaml
 
 images:
@@ -73,6 +75,23 @@ patches:
                 env:
                   - name: SMOLQUERY_BUFFER_REPLICAS
                     value: "2"
+  # The readers' catalog databases: the init ConfigMap mounted where the
+  # Postgres image runs scripts on first boot (postgres-init.yaml).
+  - target:
+      kind: StatefulSet
+      name: postgres
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes
+        value:
+          - name: postgres-init
+            configMap:
+              name: postgres-init
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: postgres-init
+          mountPath: /docker-entrypoint-initdb.d
 
 secretGenerator:
   # The writer's fleet: upstream's kind-only literals, with the sealed tier
