@@ -74,13 +74,16 @@ defmodule Topology.Examples.FederatedReadClustersTest do
     assert Api.count(writer, "SELECT count(*) AS n FROM #{dataset}.events") == {:ok, @rows}
   end
 
-  test "each reader registers the writer's lake at the writer's own data path",
+  test "each reader registers the writer's lake at the writer's own data path, and the connection test reads through it",
        %{readers: readers} do
     for {pod, reader} <- readers do
       response = Api.post!(reader, "/v1/connections", @lake)
       assert response.status in [200, 201], "#{pod}: #{inspect(response.body)}"
       assert response.body["kind"] == "ducklake"
       assert response.body["dataPath"] == "/data/ducklake"
+
+      probe = Api.post!(reader, "/v1/connections/writer/test", %{})
+      assert probe.status == 200, "#{pod}: #{inspect(probe.body)}"
     end
   end
 

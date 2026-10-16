@@ -13,7 +13,7 @@ kind: Kustomization
 namespace: federated-read-clusters
 
 resources:
-  - https://github.com/smolquery/smolquery//deploy/base?ref=v0.23.0
+  - https://github.com/smolquery/smolquery//deploy/base?ref=v0.24.0
   - ../../components/postgres
   - ../../components/rustfs
   - readers.yaml
@@ -22,7 +22,7 @@ resources:
 images:
   - name: smolquery
     newName: ghcr.io/smolquery/smolquery
-    newTag: v0.23.0
+    newTag: v0.24.0
 
 patches:
   # A CI runner holds a smaller fleet than upstream's kind overlay: two

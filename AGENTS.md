@@ -13,7 +13,7 @@ the design is plan `PL-75` in the project tracker.
 - `mix precommit` before you are done with a change (compile with
   warnings-as-errors, format, `credo --strict`, the harness's own tests).
   `mix ci` is the non-mutating gate CI runs.
-- One pinned upstream version for the whole repo (`v0.23.0` today): the
+- One pinned upstream version for the whole repo (`v0.24.0` today): the
   image tag in every example's `kustomization.yaml` and the `ref=` of every
   remote base. Bumping is one PR that moves all of them.
 - Upstream manifests are referenced by git ref

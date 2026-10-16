@@ -1,11 +1,12 @@
-# hyperdx: ClickStack's HyperDX reading logs through smolquery's ClickHouse
-# edge, per upstream docs/clickstack.md.
+# hyperdx: ClickStack's HyperDX reading logs, traces and metrics through
+# smolquery's ClickHouse edge, per upstream docs/clickstack.md.
 #
 # smolquery is one pod with every role, but its DuckLake catalog is on
 # Postgres: HyperDX sends its metadata queries in parallel, and several job
 # engines attaching a SQLite catalog at once lock it. HyperDX keeps its own
-# state in MongoDB; its connection and source are provisioned on first boot.
-# A seed Job creates default.otel_logs and writes the rows the suite expects.
+# state in MongoDB; its connection and sources are provisioned on first boot.
+# A seed Job creates default.otel_logs, default.otel_traces and the three
+# default.otel_metrics_* tables, and writes the rows the suite expects.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -22,7 +23,12 @@ resources:
 images:
   - name: smolquery
     newName: ghcr.io/smolquery/smolquery
-    newTag: v0.23.0
+    newTag: v0.24.0
+
+configMapGenerator:
+  - name: seed-script
+    files:
+      - seed.sh
 
 secretGenerator:
   - name: smolquery-env
