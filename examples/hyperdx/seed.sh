@@ -88,12 +88,15 @@ post 'table otel_traces' '{"id": "otel_traces", "schema": [
   {"name": "ScopeName", "type": "STRING"},
   {"name": "ScopeVersion", "type": "STRING"},
   {"name": "SpanAttributes", "type": "MAP(STRING, STRING)"},
-  {"name": "Duration", "type": "INT64"},
+  {"name": "Duration", "type": "INT64", "nullable": false},
   {"name": "StatusCode", "type": "STRING"},
   {"name": "StatusMessage", "type": "STRING"}
 ]}' /default/tables
 cluster otel_traces '["ServiceName", "SpanName", "Timestamp"]'
 
+# A span always has a duration, so Duration is not nullable and the edge
+# answers it as a plain Int64, as the exporter's table does.
+#
 # One trace per minute from 2026-10-15 11:00 UTC: a web request that calls
 # the api, which queries the worker. Durations are nanoseconds and step
 # through five values, and every fifth trace fails at the web edge.

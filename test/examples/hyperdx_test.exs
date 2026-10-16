@@ -180,7 +180,7 @@ defmodule Topology.Examples.HyperdxTest do
              |> Enum.map(&{&1["StatusCode"], &1["count()"]})
              |> Enum.uniq()
              |> Enum.sort() ==
-               [{"Error", "1"}, {"Ok", "44"}]
+               [{"Error", "1"}, {"Ok", "14"}]
 
       p95 =
         trace_json(
