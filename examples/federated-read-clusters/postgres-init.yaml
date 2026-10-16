@@ -1,0 +1,11 @@
+# The readers' catalog databases, created by the Postgres component on its
+# first boot: postgres-init.sql is mounted where the image runs init
+# scripts. The patch below adds the mount to the component's StatefulSet.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+data:
+  reader-catalogs.sql: |
+    CREATE DATABASE reader_1;
+    CREATE DATABASE reader_2;
